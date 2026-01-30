@@ -1,21 +1,14 @@
-import { useState, useEffect } from 'react'
-import axios from 'axios'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import Login from "./components/login";
 
 function App() {
-  const [message, setMessage] = useState("Connecting...")
-
-  useEffect(() => {
-    axios.get('http://127.0.0.1:8000/')
-      .then(res => setMessage(res.data.status))
-      .catch(err => setMessage("Error: Is Backend running?"))
-  }, [])
-
   return (
-    <div style={{ textAlign: 'center', marginTop: '50px' }}>
-      <h1>Hospital Management System</h1>
-      <p>Status: <strong>{message}</strong></p>
-    </div>
-  )
+    <Router>
+      <Routes>
+        <Route path="/" element={<Login />} />
+      </Routes>
+    </Router>
+  );
 }
 
-export default App
+export default App;
