@@ -1,10 +1,9 @@
 import { useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
-import { useNavigate, Link } from "react-router-dom"; // 👈 Add Link
+// ✅ FIXED: Only one import line for router tools
+import { useNavigate, Link } from "react-router-dom"; 
 
-// 👇 DEFINING THE API URL DYNAMICALLY
-// If we are on Netlify, use the cloud URL. If on laptop, use localhost.
+// Uses the Cloud URL if available
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Login() {
@@ -22,20 +21,14 @@ function Login() {
       formData.append("username", email);
       formData.append("password", password);
 
-      // 👇 UPDATED: Uses API_BASE_URL instead of hardcoded localhost
       const response = await axios.post(
         `${API_BASE_URL}/api/auth/login`,
         formData,
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
       );
 
-      // 1. Save Token
       localStorage.setItem("token", response.data.access_token);
-      
-      // 2. Save User Type (Vital for ABHA box to show)
       localStorage.setItem("user_type", response.data.user_type);
-      
-      // 3. Save Name (Optional, but nice for UI)
       localStorage.setItem("full_name", response.data.full_name);
 
       alert("Login Successful! Redirecting...");
@@ -61,10 +54,7 @@ function Login() {
           required
           style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
-        {/* 👇 ADD THIS LINK */}
-        <p style={{ marginTop: "15px" }}>
-        New here? <Link to="/register" style={{ color: "#0056b3" }}>Create an Account</Link>
-        </p>
+        
         <input
           type="password"
           placeholder="Password"
@@ -73,10 +63,19 @@ function Login() {
           required
           style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
+
         <button type="submit" style={{ padding: "10px", cursor: "pointer", backgroundColor: "#0056b3", color: "white", border: "none", borderRadius: "5px", fontWeight: "bold" }}>
           Login
         </button>
       </form>
+
+      {/* ✅ FIXED: Link is now nicely placed at the bottom */}
+      <div style={{ marginTop: "20px", fontSize: "0.9em" }}>
+        <p>Don't have an account?</p>
+        <Link to="/register" style={{ color: "#0056b3", fontWeight: "bold", textDecoration: "none" }}>
+            👉 Create an Account
+        </Link>
+      </div>
     </div>
   );
 }
