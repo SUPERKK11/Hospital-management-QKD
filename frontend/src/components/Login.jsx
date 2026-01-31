@@ -2,6 +2,10 @@ import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
+// 👇 DEFINING THE API URL DYNAMICALLY
+// If we are on Netlify, use the cloud URL. If on laptop, use localhost.
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,13 +21,13 @@ function Login() {
       formData.append("username", email);
       formData.append("password", password);
 
+      // 👇 UPDATED: Uses API_BASE_URL instead of hardcoded localhost
       const response = await axios.post(
-        "http://127.0.0.1:8000/api/auth/login",
+        `${API_BASE_URL}/api/auth/login`,
         formData,
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
       );
 
-      // --- 👇 THIS IS THE FIX 👇 ---
       // 1. Save Token
       localStorage.setItem("token", response.data.access_token);
       
@@ -32,7 +36,6 @@ function Login() {
       
       // 3. Save Name (Optional, but nice for UI)
       localStorage.setItem("full_name", response.data.full_name);
-      // -----------------------------
 
       alert("Login Successful! Redirecting...");
       navigate("/dashboard"); 
