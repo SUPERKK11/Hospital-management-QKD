@@ -24,22 +24,26 @@ function Register() {
     setError("");
 
     try {
-      // 👇 CHECK YOUR /docs: Is the endpoint "/register" or "/signup"? 
-      // I am assuming "/register" based on standard FastApi structure.
-      await axios.post(`${API_BASE_URL}/api/auth/register`, formData);
+      // 👇 FIX 1: Changed "/register" to "/signup" (This is the most common fix for 404)
+      await axios.post(`${API_BASE_URL}/api/auth/signup`, formData);
       
       alert("Registration Successful! Please Login.");
       navigate("/"); // Redirect to Login page
     } catch (err) {
       console.error(err);
-      setError("Registration failed. Email might already exist.");
+      // 👇 FIX 2: Show the REAL error message from the backend
+      if (err.response && err.response.data && err.response.data.detail) {
+        setError(`Error: ${JSON.stringify(err.response.data.detail)}`);
+      } else {
+        setError("Registration failed. Please check your connection.");
+      }
     }
   };
 
   return (
     <div style={{ maxWidth: "350px", margin: "50px auto", textAlign: "center", fontFamily: "Arial, sans-serif" }}>
       <h2 style={{ color: "#0056b3" }}>📝 Create Account</h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && <p style={{ color: "red", backgroundColor: "#ffe6e6", padding: "5px", borderRadius: "5px" }}>{error}</p>}
 
       <form onSubmit={handleRegister} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
         
