@@ -7,16 +7,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Register() {
   const [formData, setFormData] = useState({
-    email: "",        // Changed from 'username' to 'email'
+    email: "", 
     password: "",
     full_name: "",
-    phone: "",        // New Field
-    abha_id: "",      // New Field
-    age: "",          // New Field
-    address: "",      // New Field
+    phone: "",
+    abha_id: "",
+    age: "",
+    address: "",
     user_type: "patient",
-    specialization: "", // Only for doctors (optional based on your backend)
-    license_number: ""  // Only for doctors
+    specialization: "", 
+    license_number: "" 
   });
   
   const [error, setError] = useState("");
@@ -37,12 +37,12 @@ function Register() {
         : "/api/auth/register/patient";
 
       // 2. Format the data correctly
-      // We explicitly map the state to the fields the backend expects
       const payload = {
         email: formData.email,
         password: formData.password,
         full_name: formData.full_name,
         phone: formData.phone,
+        user_type: formData.user_type, // 👈 THIS WAS MISSING! ADDED NOW.
       };
 
       // Add specific fields based on user type
@@ -51,12 +51,12 @@ function Register() {
         payload.address = formData.address;
         payload.abha_id = formData.abha_id;
       } else {
-        // Assume Doctor needs these (or send empty strings if backend allows)
+        // Assume Doctor needs these
         payload.specialization = formData.specialization || "General";
         payload.license_number = formData.license_number || "NA";
       }
 
-      console.log("Sending Payload:", payload); // Debugging line
+      console.log("Sending Payload:", payload); 
 
       await axios.post(`${API_BASE_URL}${endpoint}`, payload);
       
@@ -66,7 +66,6 @@ function Register() {
     } catch (err) {
       console.error("Full Error:", err);
       if (err.response && err.response.data && err.response.data.detail) {
-        // Pretty print the error
         setError(`Missing Data: ${JSON.stringify(err.response.data.detail)}`);
       } else {
         setError("Registration failed. Please check your connection.");
@@ -103,7 +102,7 @@ function Register() {
             </>
         )}
 
-        {/* --- DOCTOR SPECIFIC FIELDS (Guessing these might be needed later) --- */}
+        {/* --- DOCTOR SPECIFIC FIELDS --- */}
         {formData.user_type === "doctor" && (
             <>
                 <input type="text" name="specialization" placeholder="Specialization (e.g. Cardiology)" value={formData.specialization} onChange={handleChange} style={inputStyle} />
