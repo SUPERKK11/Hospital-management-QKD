@@ -10,11 +10,9 @@ function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError(""); // Clear previous errors
+    setError(""); 
 
     try {
-      // 1. Send data to Python Backend
-      // We use URLSearchParams because OAuth2 expects form data, not JSON
       const formData = new URLSearchParams();
       formData.append("username", email);
       formData.append("password", password);
@@ -25,12 +23,19 @@ function Login() {
         { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
       );
 
-      // 2. If successful, save the token
+      // --- 👇 THIS IS THE FIX 👇 ---
+      // 1. Save Token
       localStorage.setItem("token", response.data.access_token);
       
-      // 3. Redirect to Dashboard (we will build this next)
-      // alert("Login Successful!");
-      navigate("/dashboard"); // Uncomment this later
+      // 2. Save User Type (Vital for ABHA box to show)
+      localStorage.setItem("user_type", response.data.user_type);
+      
+      // 3. Save Name (Optional, but nice for UI)
+      localStorage.setItem("full_name", response.data.full_name);
+      // -----------------------------
+
+      alert("Login Successful! Redirecting...");
+      navigate("/dashboard"); 
       
     } catch (err) {
       console.error(err);
@@ -39,18 +44,18 @@ function Login() {
   };
 
   return (
-    <div style={{ maxWidth: "300px", margin: "50px auto", textAlign: "center" }}>
-      <h2>Hospital Login</h2>
+    <div style={{ maxWidth: "300px", margin: "50px auto", textAlign: "center", fontFamily: "Arial, sans-serif" }}>
+      <h2 style={{ color: "#0056b3" }}>🏥 Hospital Login</h2>
       {error && <p style={{ color: "red" }}>{error}</p>}
       
-      <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
         <input
           type="email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
-          style={{ padding: "8px" }}
+          style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
         <input
           type="password"
@@ -58,9 +63,9 @@ function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
-          style={{ padding: "8px" }}
+          style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
-        <button type="submit" style={{ padding: "10px", cursor: "pointer" }}>
+        <button type="submit" style={{ padding: "10px", cursor: "pointer", backgroundColor: "#0056b3", color: "white", border: "none", borderRadius: "5px", fontWeight: "bold" }}>
           Login
         </button>
       </form>

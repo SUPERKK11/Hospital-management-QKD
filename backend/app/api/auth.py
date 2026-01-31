@@ -16,7 +16,6 @@ from app.core.security import (
 
 # 1. Setup the Router and Security Scheme
 router = APIRouter()
-# This tells Swagger where to send the username/password to get a token
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # --- REGISTRATION ---
@@ -63,7 +62,7 @@ async def register_doctor(doctor: DoctorCreate):
     return created_user
 
 
-# --- LOGIN ---
+# --- LOGIN (UPDATED) ---
 @router.post("/login")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     db = await get_database()
@@ -80,11 +79,21 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     
     # Generate Token
     access_token_expires = timedelta(minutes=30)
+    
+    # We add the 'type' inside the token data too, just in case
     access_token = create_access_token(
-        data={"sub": user["email"]}, expires_delta=access_token_expires
+        data={"sub": user["email"], "type": user["user_type"]}, 
+        expires_delta=access_token_expires
     )
     
-    return {"access_token": access_token, "token_type": "bearer"}
+    # 👇 THIS IS THE CRITICAL FIX 👇
+    # We now return user_type and full_name so the Frontend can save it.
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user_type": user["user_type"],  # <--- Sending the role!
+        "full_name": user["full_name"]
+    }
 
 # --- SECURITY CHECK (The "Bouncer") ---
 async def get_current_user(token: str = Depends(oauth2_scheme)):
