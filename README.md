@@ -48,7 +48,7 @@ conda activate hospital-sys
 # Install dependencies
 pip install fastapi uvicorn pymongo python-dotenv pydantic bcrypt pyjwt cryptography
 # Run the Server
-uvicorn main:app --reload
+python -m uvicorn app.main:app --reload
 ```
 ### 3. Frontend Setup (React)
 ```bash
