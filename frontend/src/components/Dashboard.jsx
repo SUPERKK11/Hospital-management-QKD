@@ -13,23 +13,21 @@ function Dashboard() {
   // Doctor Form State
   const [patientEmail, setPatientEmail] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
-  const [details, setDetails] = useState("");
+  const [prescription, setPrescription] = useState(""); // Renamed from 'details' to 'prescription'
 
   const navigate = useNavigate();
 
   useEffect(() => {
-    // 1. Check if user is logged in
     const token = localStorage.getItem("token");
     const type = localStorage.getItem("user_type");
     const name = localStorage.getItem("full_name");
 
     if (!token) {
-      navigate("/"); // Redirect to Login if no token
+      navigate("/"); 
     } else {
       setUserType(type);
       setFullName(name);
       
-      // If Patient, load their records immediately
       if (type === "patient") {
         fetchRecords(token);
       }
@@ -52,26 +50,24 @@ function Dashboard() {
     const token = localStorage.getItem("token");
 
     try {
+      // 👇 FIX: Sending the correct field names based on your backend schema
       await axios.post(
         `${API_BASE_URL}/api/records/create`,
         {
           patient_email: patientEmail,
           diagnosis: diagnosis,
-          details: details,
+          prescription: prescription, // Correct Field Name
+          notes: "Prescribed via Web Dashboard" // Optional extra field
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
       alert("✅ Record created successfully!");
-      // Clear form
       setPatientEmail("");
       setDiagnosis("");
-      setDetails("");
+      setPrescription(""); // Clear the form
     } catch (err) {
       console.error(err);
-      
-      // 👇 THIS IS THE IMPORTANT CHANGE
-      // It looks inside the error response to find the "detail" message
       if (err.response && err.response.data && err.response.data.detail) {
           alert(`Server Error: ${JSON.stringify(err.response.data.detail)}`);
       } else {
@@ -123,9 +119,9 @@ function Dashboard() {
               style={inputStyle}
             />
             <textarea 
-              placeholder="Treatment Details / Prescription" 
-              value={details} 
-              onChange={(e) => setDetails(e.target.value)} 
+              placeholder="Prescription / Treatment" 
+              value={prescription} 
+              onChange={(e) => setPrescription(e.target.value)} 
               required 
               style={{ ...inputStyle, height: "80px" }}
             />
@@ -147,7 +143,8 @@ function Dashboard() {
               {records.map((rec, index) => (
                 <div key={index} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                   <h4 style={{ margin: "0 0 5px 0", color: "#0056b3" }}>{rec.diagnosis}</h4>
-                  <p style={{ margin: "5px 0" }}><strong>Rx:</strong> {rec.details}</p>
+                  {/* 👇 FIX: Displaying 'prescription' instead of 'details' */}
+                  <p style={{ margin: "5px 0" }}><strong>Rx:</strong> {rec.prescription}</p> 
                   <p style={{ margin: "0", fontSize: "0.85em", color: "#666" }}>
                     Created by: {rec.doctor_name || "Doctor"} on {new Date(rec.created_at).toLocaleDateString()}
                   </p>
