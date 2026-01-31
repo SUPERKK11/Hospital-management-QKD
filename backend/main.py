@@ -40,7 +40,7 @@ app.add_middleware(
 HF_API_TOKEN = os.getenv("HF_TOKEN")
 
 # 2. Define the Hugging Face Model URL (Zero-Shot Classification)
-AI_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+AI_URL = "https://router.huggingface.co/models/facebook/bart-large-mnli"
 
 # 3. Define the Request Body
 class DiagnosisRequest(BaseModel):
