@@ -7,10 +7,10 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Register() {
   const [formData, setFormData] = useState({
-    username: "", // This will be the email
+    username: "", // This is the email
     password: "",
     full_name: "",
-    user_type: "patient", // Default to patient
+    user_type: "patient", // Default selection
   });
   const [error, setError] = useState("");
   const navigate = useNavigate();
@@ -24,16 +24,22 @@ function Register() {
     setError("");
 
     try {
-      // 👇 FIX 1: Changed "/register" to "/signup" (This is the most common fix for 404)
-      await axios.post(`${API_BASE_URL}/api/auth/signup`, formData);
+      // 👇 THIS IS THE FIX: Choose the URL based on the user type
+      const endpoint = formData.user_type === "doctor" 
+        ? "/api/auth/register/doctor" 
+        : "/api/auth/register/patient";
+
+      // Send the request to the correct URL
+      await axios.post(`${API_BASE_URL}${endpoint}`, formData);
       
-      alert("Registration Successful! Please Login.");
+      alert(`Registration Successful as a ${formData.user_type}! Please Login.`);
       navigate("/"); // Redirect to Login page
+
     } catch (err) {
       console.error(err);
-      // 👇 FIX 2: Show the REAL error message from the backend
+      // Show the exact error from the server
       if (err.response && err.response.data && err.response.data.detail) {
-        setError(`Error: ${JSON.stringify(err.response.data.detail)}`);
+        setError(`Server Error: ${JSON.stringify(err.response.data.detail)}`);
       } else {
         setError("Registration failed. Please check your connection.");
       }
