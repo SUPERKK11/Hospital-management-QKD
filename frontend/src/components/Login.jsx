@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // 👈 Add Link
 
 // 👇 DEFINING THE API URL DYNAMICALLY
 // If we are on Netlify, use the cloud URL. If on laptop, use localhost.
@@ -60,6 +61,10 @@ function Login() {
           required
           style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
         />
+        {/* 👇 ADD THIS LINK */}
+        <p style={{ marginTop: "15px" }}>
+        New here? <Link to="/register" style={{ color: "#0056b3" }}>Create an Account</Link>
+        </p>
         <input
           type="password"
           placeholder="Password"
