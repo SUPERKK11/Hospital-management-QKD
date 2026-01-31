@@ -69,7 +69,14 @@ function Dashboard() {
       setDetails("");
     } catch (err) {
       console.error(err);
-      alert("Failed to create record. Check patient email.");
+      
+      // 👇 THIS IS THE IMPORTANT CHANGE
+      // It looks inside the error response to find the "detail" message
+      if (err.response && err.response.data && err.response.data.detail) {
+          alert(`Server Error: ${JSON.stringify(err.response.data.detail)}`);
+      } else {
+          alert("Network Error: Could not reach the server.");
+      }
     }
   };
 
