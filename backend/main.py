@@ -52,20 +52,15 @@ async def predict_department(request: DiagnosisRequest):
     Takes patient symptoms and returns the suggested medical department.
     Uses Hugging Face Inference API (Serverless).
     """
+    # 1. Check if token exists
     if not HF_API_TOKEN:
-        return {"recommended_department": "AI Config Missing (Check .env)", "confidence": 0}
+        return {"recommended_department": "Error: HF_TOKEN missing in .env", "confidence": 0}
 
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     
-    # Departments the AI can choose from
     candidate_labels = [
-        "Cardiology", 
-        "Neurology", 
-        "Orthopedics", 
-        "General Medicine", 
-        "Pediatrics", 
-        "Dermatology", 
-        "Psychiatry"
+        "Cardiology", "Neurology", "Orthopedics", "General Medicine", 
+        "Pediatrics", "Dermatology", "Psychiatry"
     ]
 
     payload = {
@@ -74,25 +69,34 @@ async def predict_department(request: DiagnosisRequest):
     }
 
     try:
-        # Send text to Hugging Face API
         response = requests.post(AI_URL, headers=headers, json=payload)
         data = response.json()
 
-        # Handle 'Model Loading' error (common on free tier)
-        if "error" in data and "loading" in data["error"]:
-            return {
-                "recommended_department": "AI is warming up... try again in 10s",
-                "confidence": 0
-            }
+        # 🔍 DEBUG: Print the raw response to logs
+        print(f"🔍 HF RESPONSE: {data}")
 
-        # Return the top prediction
+        # 2. CATCH API ERRORS (The missing piece!)
+        # If Hugging Face returns an error, show it to the user instead of crashing
+        if "error" in data:
+            error_msg = data["error"]
+            
+            # Common case: Model is loading
+            if "loading" in str(error_msg).lower():
+                return {"recommended_department": "AI is warming up... try again in 10s", "confidence": 0}
+            
+            # Common case: Bad Token
+            return {"recommended_department": f"HF Error: {error_msg}", "confidence": 0}
+
+        # 3. Success!
         return {
             "recommended_department": data['labels'][0],
             "confidence": round(data['scores'][0] * 100, 1)
         }
+
     except Exception as e:
-        print(f"AI Error: {e}")
-        return {"recommended_department": "Manual Selection Needed", "confidence": 0}
+        # If code crashes (e.g., internet down), show the Python error
+        print(f"❌ CRITICAL ERROR: {e}")
+        return {"recommended_department": f"Backend Error: {str(e)}", "confidence": 0}
 
 # ==========================================
 
