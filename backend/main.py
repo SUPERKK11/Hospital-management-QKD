@@ -1,13 +1,16 @@
+import os
+import requests  # 👈 Added for AI API
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel # 👈 Added for data validation
+
+# Import your routers
 from app.api import auth, records, abha 
 
 # 👇 IMPORT DB CONNECTION FUNCTIONS
-# (We try to import standard names; if your names are different, we'll see an error)
 try:
     from app.db.mongodb import connect_to_mongo, close_mongo_connection
 except ImportError:
-    # Fallback if names are different - we will catch this in logs
     connect_to_mongo = None
     close_mongo_connection = None
     print("⚠️ WARNING: Could not import DB connection functions. Check app/db/mongodb.py")
@@ -28,6 +31,70 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ==========================================
+# 🧠 AI TRIAGE SECTION (New Feature)
+# ==========================================
+
+# 1. Get the Token from .env
+HF_API_TOKEN = os.getenv("HF_TOKEN")
+
+# 2. Define the Hugging Face Model URL (Zero-Shot Classification)
+AI_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-mnli"
+
+# 3. Define the Request Body
+class DiagnosisRequest(BaseModel):
+    diagnosis_text: str
+
+@app.post("/api/predict-department", tags=["AI Triage"])
+async def predict_department(request: DiagnosisRequest):
+    """
+    Takes patient symptoms and returns the suggested medical department.
+    Uses Hugging Face Inference API (Serverless).
+    """
+    if not HF_API_TOKEN:
+        return {"recommended_department": "AI Config Missing (Check .env)", "confidence": 0}
+
+    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
+    
+    # Departments the AI can choose from
+    candidate_labels = [
+        "Cardiology", 
+        "Neurology", 
+        "Orthopedics", 
+        "General Medicine", 
+        "Pediatrics", 
+        "Dermatology", 
+        "Psychiatry"
+    ]
+
+    payload = {
+        "inputs": request.diagnosis_text,
+        "parameters": {"candidate_labels": candidate_labels}
+    }
+
+    try:
+        # Send text to Hugging Face API
+        response = requests.post(AI_URL, headers=headers, json=payload)
+        data = response.json()
+
+        # Handle 'Model Loading' error (common on free tier)
+        if "error" in data and "loading" in data["error"]:
+            return {
+                "recommended_department": "AI is warming up... try again in 10s",
+                "confidence": 0
+            }
+
+        # Return the top prediction
+        return {
+            "recommended_department": data['labels'][0],
+            "confidence": round(data['scores'][0] * 100, 1)
+        }
+    except Exception as e:
+        print(f"AI Error: {e}")
+        return {"recommended_department": "Manual Selection Needed", "confidence": 0}
+
+# ==========================================
 
 # --- LIFECYCLE EVENTS (Connect to DB on Startup) ---
 @app.on_event("startup")

@@ -13,7 +13,11 @@ function Dashboard() {
   // Doctor Form State
   const [patientEmail, setPatientEmail] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
-  const [prescription, setPrescription] = useState(""); // Renamed from 'details' to 'prescription'
+  const [prescription, setPrescription] = useState(""); 
+
+  // 🤖 AI State
+  const [aiSuggestion, setAiSuggestion] = useState("");
+  const [loadingAi, setLoadingAi] = useState(false);
 
   const navigate = useNavigate();
 
@@ -45,19 +49,44 @@ function Dashboard() {
     }
   };
 
+  // 🧠 Function to Ask AI
+  const handleAiPrediction = async () => {
+    if (!diagnosis) return alert("Please enter symptoms first!");
+    
+    setLoadingAi(true);
+    setAiSuggestion("");
+
+    try {
+        const token = localStorage.getItem("token");
+        const res = await axios.post(
+            `${API_BASE_URL}/api/predict-department`,
+            { diagnosis_text: diagnosis },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
+        setAiSuggestion(
+            `💡 AI Suggests: ${res.data.recommended_department} (${res.data.confidence}%)`
+        );
+    } catch (err) {
+        console.error(err);
+        alert("AI Service Unavailable. Check console/backend.");
+    } finally {
+        setLoadingAi(false);
+    }
+  };
+
   const handleCreateRecord = async (e) => {
     e.preventDefault();
     const token = localStorage.getItem("token");
 
     try {
-      // 👇 FIX: Sending the correct field names based on your backend schema
       await axios.post(
         `${API_BASE_URL}/api/records/create`,
         {
           patient_email: patientEmail,
           diagnosis: diagnosis,
-          prescription: prescription, // Correct Field Name
-          notes: "Prescribed via Web Dashboard" // Optional extra field
+          prescription: prescription, 
+          notes: "Prescribed via Web Dashboard"
         },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -65,7 +94,8 @@ function Dashboard() {
       alert("✅ Record created successfully!");
       setPatientEmail("");
       setDiagnosis("");
-      setPrescription(""); // Clear the form
+      setPrescription(""); 
+      setAiSuggestion(""); // Reset AI suggestion
     } catch (err) {
       console.error(err);
       if (err.response && err.response.data && err.response.data.detail) {
@@ -102,6 +132,7 @@ function Dashboard() {
         <div style={{ border: "2px solid #28a745", padding: "20px", borderRadius: "10px", backgroundColor: "#e9f7ef" }}>
           <h3 style={{ color: "#28a745", marginTop: 0 }}>📝 Create New Medical Record</h3>
           <form onSubmit={handleCreateRecord} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            
             <input 
               type="email" 
               placeholder="Patient Email" 
@@ -110,14 +141,44 @@ function Dashboard() {
               required 
               style={inputStyle}
             />
-            <input 
-              type="text" 
-              placeholder="Diagnosis (e.g. Fever)" 
-              value={diagnosis} 
-              onChange={(e) => setDiagnosis(e.target.value)} 
-              required 
-              style={inputStyle}
-            />
+            
+            {/* Diagnosis + AI Button Section */}
+            <div>
+                <div style={{ display: "flex", gap: "10px" }}>
+                    <input 
+                      type="text" 
+                      placeholder="Diagnosis (e.g. Sharp chest pain)" 
+                      value={diagnosis} 
+                      onChange={(e) => setDiagnosis(e.target.value)} 
+                      required 
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button 
+                        type="button" 
+                        onClick={handleAiPrediction} 
+                        disabled={loadingAi}
+                        style={{ 
+                            padding: "0 15px", 
+                            backgroundColor: "#17a2b8", 
+                            color: "white", 
+                            border: "none", 
+                            borderRadius: "5px", 
+                            cursor: "pointer",
+                            fontWeight: "bold",
+                            opacity: loadingAi ? 0.7 : 1
+                        }}
+                    >
+                        {loadingAi ? "Thinking..." : "🤖 Ask AI"}
+                    </button>
+                </div>
+                {/* AI Result Display */}
+                {aiSuggestion && (
+                    <div style={{ marginTop: "5px", color: "#28a745", fontWeight: "bold", fontSize: "0.9em" }}>
+                        {aiSuggestion}
+                    </div>
+                )}
+            </div>
+
             <textarea 
               placeholder="Prescription / Treatment" 
               value={prescription} 
@@ -125,6 +186,7 @@ function Dashboard() {
               required 
               style={{ ...inputStyle, height: "80px" }}
             />
+            
             <button type="submit" style={{ padding: "10px", backgroundColor: "#28a745", color: "white", border: "none", borderRadius: "5px", cursor: "pointer", fontWeight: "bold" }}>
               Save Record
             </button>
@@ -143,7 +205,6 @@ function Dashboard() {
               {records.map((rec, index) => (
                 <div key={index} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                   <h4 style={{ margin: "0 0 5px 0", color: "#0056b3" }}>{rec.diagnosis}</h4>
-                  {/* 👇 FIX: Displaying 'prescription' instead of 'details' */}
                   <p style={{ margin: "5px 0" }}><strong>Rx:</strong> {rec.prescription}</p> 
                   <p style={{ margin: "0", fontSize: "0.85em", color: "#666" }}>
                     Created by: {rec.doctor_name || "Doctor"} on {new Date(rec.created_at).toLocaleDateString()}
