@@ -29,8 +29,8 @@ function Login() {
       localStorage.setItem("token", response.data.access_token);
       
       // 3. Redirect to Dashboard (we will build this next)
-      alert("Login Successful!");
-      // navigate("/dashboard"); // Uncomment this later
+      // alert("Login Successful!");
+      navigate("/dashboard"); // Uncomment this later
       
     } catch (err) {
       console.error(err);

@@ -37,12 +37,24 @@ async def create_record(record: RecordCreate, current_user: dict = Depends(get_c
 async def get_my_records(current_user: dict = Depends(get_current_user)):
     db = await get_database()
     
+    # --- DEBUG SPY START ---
+    # print("\n" + "="*30)
+    # print(f"🕵️ DEBUG SPY: User Type -> {current_user.get('user_type')}")
+    # print(f"🕵️ DEBUG SPY: User Email -> {current_user.get('email')}")
+    # -----------------------
+
     # If Patient: Show records linked to their email
     if current_user["user_type"] == "patient":
+        # print(f"🕵️ DEBUG SPY: Searching DB for patient_email == '{current_user.get('email')}'")
         records = await db["records"].find({"patient_email": current_user["email"]}).to_list(100)
     
     # If Doctor: Show records they created
     else:
+        # print(f"🕵️ DEBUG SPY: Searching DB for doctor_id == {current_user.get('_id')}")
         records = await db["records"].find({"doctor_id": current_user["_id"]}).to_list(100)
+        
+    # --- RESULT CHECK ---
+    # print(f"🕵️ DEBUG SPY: Found {len(records)} records.")
+    # print("="*30 + "\n")
         
     return records
