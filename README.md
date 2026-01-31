@@ -58,3 +58,32 @@ npm install
 # Run the UI
 npm run dev
 ```
+
+## 🐳 Docker Quick Start (Recommended)
+You don't need to install Python or Node.js to run this app. You can pull the pre-built images directly from Docker Hub.
+
+1.  **Create a file named `docker-compose.yml`** and paste this content:
+    ```yaml
+    version: '3.8'
+    services:
+      backend:
+        image: superkk11/hospital-backend:v1
+        ports:
+          - "8000:8000"
+        environment:
+          # Replace with your actual MongoDB URL
+          - MONGODB_URL=mongodb+srv://your_user:your_pass@cluster.mongodb.net/hospital_db
+      frontend:
+        image: superkk11/hospital-frontend:v1
+        ports:
+          - "5173:80"
+        depends_on:
+          - backend
+    ```
+
+2.  **Run the application:**
+    ```bash
+    docker-compose up
+    ```
+
+3.  **Open the App:** [http://localhost:5173](http://localhost:5173)
