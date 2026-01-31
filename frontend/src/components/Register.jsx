@@ -11,12 +11,15 @@ function Register() {
     password: "",
     full_name: "",
     phone: "",
+    user_type: "patient",
+    // Patient Fields
     abha_id: "",
     age: "",
     address: "",
-    user_type: "patient",
+    // Doctor Fields
     specialization: "", 
-    license_number: "" 
+    license_id: "",    // 👈 Renamed from license_number
+    hospital_name: ""  // 👈 New Field
   });
   
   const [error, setError] = useState("");
@@ -42,18 +45,19 @@ function Register() {
         password: formData.password,
         full_name: formData.full_name,
         phone: formData.phone,
-        user_type: formData.user_type, // 👈 THIS WAS MISSING! ADDED NOW.
+        user_type: formData.user_type,
       };
 
       // Add specific fields based on user type
       if (formData.user_type === "patient") {
-        payload.age = parseInt(formData.age); // Ensure age is a number
+        payload.age = parseInt(formData.age); 
         payload.address = formData.address;
         payload.abha_id = formData.abha_id;
       } else {
-        // Assume Doctor needs these
+        // Doctor specific fields
         payload.specialization = formData.specialization || "General";
-        payload.license_number = formData.license_number || "NA";
+        payload.license_id = formData.license_id;       // 👈 Send license_id
+        payload.hospital_name = formData.hospital_name; // 👈 Send hospital_name
       }
 
       console.log("Sending Payload:", payload); 
@@ -96,7 +100,7 @@ function Register() {
             <>
                 <div style={{display: 'flex', gap: '10px'}}>
                     <input type="number" name="age" placeholder="Age" value={formData.age} onChange={handleChange} required style={{...inputStyle, flex: 1}} />
-                    <input type="text" name="abha_id" placeholder="ABHA ID (e.g. 12-34-56)" value={formData.abha_id} onChange={handleChange} required style={{...inputStyle, flex: 2}} />
+                    <input type="text" name="abha_id" placeholder="ABHA ID" value={formData.abha_id} onChange={handleChange} required style={{...inputStyle, flex: 2}} />
                 </div>
                 <textarea name="address" placeholder="Home Address" value={formData.address} onChange={handleChange} required style={{...inputStyle, height: "60px"}} />
             </>
@@ -105,8 +109,9 @@ function Register() {
         {/* --- DOCTOR SPECIFIC FIELDS --- */}
         {formData.user_type === "doctor" && (
             <>
-                <input type="text" name="specialization" placeholder="Specialization (e.g. Cardiology)" value={formData.specialization} onChange={handleChange} style={inputStyle} />
-                <input type="text" name="license_number" placeholder="License Number" value={formData.license_number} onChange={handleChange} style={inputStyle} />
+                <input type="text" name="hospital_name" placeholder="Hospital Name" value={formData.hospital_name} onChange={handleChange} required style={inputStyle} />
+                <input type="text" name="license_id" placeholder="Medical License ID" value={formData.license_id} onChange={handleChange} required style={inputStyle} />
+                <input type="text" name="specialization" placeholder="Specialization (Optional)" value={formData.specialization} onChange={handleChange} style={inputStyle} />
             </>
         )}
 
