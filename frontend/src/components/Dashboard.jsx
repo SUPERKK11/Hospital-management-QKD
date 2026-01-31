@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 
+// 👇 DEFINING THE API URL DYNAMICALLY (Works on Cloud & Localhost)
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
 function Dashboard() {
   const [records, setRecords] = useState([]);
   const [error, setError] = useState("");
@@ -19,11 +22,9 @@ function Dashboard() {
     const fetchRecords = async () => {
       const token = localStorage.getItem("token");
       
-      // --- FIX: FORCE LOWERCASE & HANDLE NULL ---
       const rawType = localStorage.getItem("user_type");
       const type = rawType ? rawType.toLowerCase() : ""; 
       setUserType(type);
-      // ------------------------------------------
 
       if (!token) {
         navigate("/");
@@ -31,7 +32,8 @@ function Dashboard() {
       }
 
       try {
-        const response = await axios.get("http://127.0.0.1:8000/api/records/my-records", {
+        // 👇 UPDATED: Uses API_BASE_URL
+        const response = await axios.get(`${API_BASE_URL}/api/records/my-records`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         setRecords(response.data);
@@ -48,8 +50,9 @@ function Dashboard() {
   const requestOtp = async () => {
     try {
       const token = localStorage.getItem("token");
+      // 👇 UPDATED: Uses API_BASE_URL
       const res = await axios.post(
-        `http://127.0.0.1:8000/api/abha/request-otp?aadhaar=${aadhaar}`, 
+        `${API_BASE_URL}/api/abha/request-otp?aadhaar=${aadhaar}`, 
         {}, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -64,8 +67,9 @@ function Dashboard() {
   const verifyOtp = async () => {
     try {
       const token = localStorage.getItem("token");
+      // 👇 UPDATED: Uses API_BASE_URL
       const res = await axios.post(
-        `http://127.0.0.1:8000/api/abha/verify-otp?aadhaar=${aadhaar}&otp=${otp}`, 
+        `${API_BASE_URL}/api/abha/verify-otp?aadhaar=${aadhaar}&otp=${otp}`, 
         {}, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -98,7 +102,6 @@ function Dashboard() {
         <h2 style={{ margin: 0, color: "#0056b3" }}>🏥 Medical Dashboard</h2>
         
         <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
-            {/* DEBUG LABEL: Tells us exactly what your role is */}
             <span style={{ fontSize: "0.8em", color: "#666", border: "1px solid #ccc", padding: "5px 10px", borderRadius: "20px" }}>
                 Role: <strong>{userType || "undefined"}</strong>
             </span>
@@ -110,7 +113,6 @@ function Dashboard() {
         {error && <p style={{ color: "red", textAlign: "center" }}>{error}</p>}
 
         {/* 🇮🇳 ABHA INTEGRATION SECTION */}
-        {/* We now check if userType INCLUDES "patient" to be extra safe */}
         {userType && userType.includes("patient") && step !== 3 && (
             <div style={{ ...cardStyle, borderLeft: "5px solid #ff9900" }}>
                 <h3 style={{ marginTop: 0 }}>🇮🇳 Link ABHA ID (Ayushman Bharat)</h3>
