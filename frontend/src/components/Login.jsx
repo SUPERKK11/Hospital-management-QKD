@@ -42,7 +42,7 @@ function Login() {
 
   return (
     <div style={{ maxWidth: "300px", margin: "50px auto", textAlign: "center", fontFamily: "Arial, sans-serif" }}>
-      <h2 style={{ color: "#0056b3" }}>🏥 Hospital Login</h2>
+      <h2 style={{ color: "#0056b3" }}>🏥 User Login </h2>
       {error && <p style={{ color: "red" }}>{error}</p>}
       
       <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
