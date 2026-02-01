@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
+import TransferControl from '../components/TransferControl'; // 👈 IMPORTED
 
-// Uses the Cloud URL if available
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Dashboard() {
@@ -32,9 +32,8 @@ function Dashboard() {
       setUserType(type);
       setFullName(name);
       
-      if (type === "patient") {
-        fetchRecords(token);
-      }
+      // 👇 CHANGED: Fetch records for EVERYONE (Doctor needs to see them to Transfer)
+      fetchRecords(token);
     }
   }, [navigate]);
 
@@ -95,10 +94,14 @@ function Dashboard() {
       setPatientEmail("");
       setDiagnosis("");
       setPrescription(""); 
-      setAiSuggestion(""); // Reset AI suggestion
+      setAiSuggestion(""); 
+      
+      // 👇 REFRESH LIST immediately so the new record appears
+      fetchRecords(token);
+
     } catch (err) {
       console.error(err);
-      if (err.response && err.response.data && err.response.data.detail) {
+      if (err.response?.data?.detail) {
           alert(`Server Error: ${JSON.stringify(err.response.data.detail)}`);
       } else {
           alert("Network Error: Could not reach the server.");
@@ -127,9 +130,9 @@ function Dashboard() {
         <span style={{ fontSize: "0.9em", color: "#666" }}>Role: {userType === "doctor" ? "👨‍⚕️ Doctor" : "🤒 Patient"}</span>
       </div>
 
-      {/* --- DOCTOR VIEW --- */}
+      {/* --- DOCTOR: CREATE RECORD --- */}
       {userType === "doctor" && (
-        <div style={{ border: "2px solid #28a745", padding: "20px", borderRadius: "10px", backgroundColor: "#e9f7ef" }}>
+        <div style={{ border: "2px solid #28a745", padding: "20px", borderRadius: "10px", backgroundColor: "#e9f7ef", marginBottom: "30px" }}>
           <h3 style={{ color: "#28a745", marginTop: 0 }}>📝 Create New Medical Record</h3>
           <form onSubmit={handleCreateRecord} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
             
@@ -142,7 +145,7 @@ function Dashboard() {
               style={inputStyle}
             />
             
-            {/* Diagnosis + AI Button Section */}
+            {/* Diagnosis + AI Button */}
             <div>
                 <div style={{ display: "flex", gap: "10px" }}>
                     <input 
@@ -171,7 +174,6 @@ function Dashboard() {
                         {loadingAi ? "Thinking..." : "🤖 Ask AI"}
                     </button>
                 </div>
-                {/* AI Result Display */}
                 {aiSuggestion && (
                     <div style={{ marginTop: "5px", color: "#28a745", fontWeight: "bold", fontSize: "0.9em" }}>
                         {aiSuggestion}
@@ -194,27 +196,39 @@ function Dashboard() {
         </div>
       )}
 
-      {/* --- PATIENT VIEW --- */}
-      {userType === "patient" && (
-        <div>
-          <h3>📂 My Medical History</h3>
-          {records.length === 0 ? (
-            <p style={{ color: "#666", fontStyle: "italic" }}>No medical records found. You seem to be in perfect health! (Or the doctor hasn't seen you yet).</p>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-              {records.map((rec, index) => (
-                <div key={index} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
-                  <h4 style={{ margin: "0 0 5px 0", color: "#0056b3" }}>{rec.diagnosis}</h4>
-                  <p style={{ margin: "5px 0" }}><strong>Rx:</strong> {rec.prescription}</p> 
-                  <p style={{ margin: "0", fontSize: "0.85em", color: "#666" }}>
-                    Created by: {rec.doctor_name || "Doctor"} on {new Date(rec.created_at).toLocaleDateString()}
-                  </p>
+      {/* --- RECORD LIST (VISIBLE TO BOTH) --- */}
+      <div>
+        <h3 style={{ borderBottom: "2px solid #eee", paddingBottom: "10px" }}>
+            {userType === "doctor" ? "📂 Records Created by You" : "📂 My Medical History"}
+        </h3>
+
+        {records.length === 0 ? (
+          <p style={{ color: "#666", fontStyle: "italic" }}>No records found.</p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
+            {records.map((rec) => (
+              <div key={rec._id} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", boxShadow: "0 2px 4px rgba(0,0,0,0.1)", backgroundColor: "white" }}>
+                <div style={{display: 'flex', justifyContent: 'space-between'}}>
+                    <h4 style={{ margin: "0 0 5px 0", color: "#0056b3" }}>{rec.diagnosis}</h4>
+                    <span style={{ fontSize: "0.8em", background: "#d1ecf1", padding: "2px 8px", borderRadius: "10px", color: "#0c5460" }}>Secured</span>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+                <p style={{ margin: "5px 0" }}><strong>Rx:</strong> {rec.prescription}</p> 
+                <p style={{ margin: "0 0 10px 0", fontSize: "0.85em", color: "#666" }}>
+                  Patient: {rec.patient_email} | Date: {new Date(rec.created_at).toLocaleDateString()}
+                </p>
+
+                {/* 👇 ONLY DOCTORS SEE THE TRANSFER BUTTON */}
+                {userType === "doctor" && (
+                    <>
+                        <hr style={{border: "0", borderTop: "1px solid #eee", margin: "10px 0"}}/>
+                        <TransferControl recordId={rec._id} />
+                    </>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
     </div>
   );

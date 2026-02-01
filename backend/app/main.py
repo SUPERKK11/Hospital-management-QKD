@@ -4,7 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 from app.api.auth import router as auth_router
-from app.api.records import router as records_router 
+
+# from app.api.records import router as records_router  # <--- COMMENT THIS OUT FOR NOW
 
 # --- Lifespan: Handles startup and shutdown ---
 @asynccontextmanager
@@ -21,7 +22,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# --- CORS Middleware (Allows Frontend to talk to Backend) ---
+# --- CORS Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,7 +33,7 @@ app.add_middleware(
 
 # --- Register Routers ---
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(records_router, prefix="/api/records", tags=["Medical Records"]) 
+# app.include_router(records_router, prefix="/api/records", tags=["Medical Records"]) # <--- COMMENT THIS OUT
 
 # --- Root Endpoint ---
 @app.get("/")

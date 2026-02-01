@@ -1,27 +1,30 @@
-from pydantic import BaseModel, Field, ConfigDict, BeforeValidator
-from typing import Optional, Annotated
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 from datetime import datetime
-from bson import ObjectId
 
-# Tool to convert ObjectId -> String
-PyObjectId = Annotated[str, BeforeValidator(str)]
-
-class RecordBase(BaseModel):
-    patient_email: str
+class RecordCreate(BaseModel):
+    # Doctor can find patient by Email OR ABHA (Either/Or Logic)
+    patient_email: Optional[EmailStr] = None
+    patient_abha: Optional[str] = None
+    
     diagnosis: str
     prescription: str
-    notes: Optional[str] = None
 
-class RecordCreate(RecordBase):
-    pass
-
-class RecordResponse(RecordBase):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+class RecordResponse(BaseModel):
+    id: str = Field(alias="_id")
     doctor_name: str
+    hospital: Optional[str] = "Unknown"  # <--- New Field for Silo Logic
+    
+    patient_id: str
+    patient_abha: Optional[str] = None   # <--- New Field for Patient View
+    
+    diagnosis: str
+    prescription: str
     created_at: datetime
     
-    model_config = ConfigDict(
-        populate_by_name=True,
-        arbitrary_types_allowed=True,
-        json_encoders={ObjectId: str}
-    )
+    # We hide the quantum key in the response for security, 
+    # but we keep it in the DB.
+    
+    class Config:
+        populate_by_name = True
+        json_encoders = {datetime: lambda v: v.isoformat()}

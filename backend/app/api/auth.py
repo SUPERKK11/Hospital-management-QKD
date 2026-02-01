@@ -1,11 +1,13 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import OAuth2PasswordRequestForm, OAuth2PasswordBearer
 from jose import JWTError, jwt
-from datetime import timedelta
+from datetime import datetime, timedelta
+from pydantic import BaseModel, EmailStr, field_validator
+from typing import Optional
+import re
 
 # Import your local tools
 from app.db.mongodb import get_database
-from app.models.user import PatientCreate, DoctorCreate, UserResponse
 from app.core.security import (
     get_password_hash, 
     verify_password, 
@@ -14,88 +16,153 @@ from app.core.security import (
     ALGORITHM
 )
 
-# 1. Setup the Router and Security Scheme
 router = APIRouter()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
-# --- REGISTRATION ---
-@router.post("/register/patient", response_model=UserResponse)
-async def register_patient(patient: PatientCreate):
-    db = await get_database()
+# --- 1. UNIFIED DATA MODEL ---
+# We use one flexible model to handle inputs from the single Registration Form
+class UserRegister(BaseModel):
+    full_name: str
+    email: EmailStr
+    password: str
+    role: str           # "doctor", "patient", "government"
+    
+    # ✅ CRITICAL FIX: Must be Optional to accept 'null' from Frontend
+    hospital: Optional[str] = None  
+    abha_number: Optional[str] = None
 
-    # Check if email already exists
-    if await db["users"].find_one({"email": patient.email}):
+    @field_validator('hospital')
+    def validate_hospital(cls, v, info):
+        # Access other fields
+        values = info.data
+        
+        # Government doesn't need a specific hospital tag
+        if 'role' in values and values['role'] == 'government':
+            return "National"
+        
+        # Patient doesn't need a hospital (Ensure it's None)
+        if 'role' in values and values['role'] == 'patient':
+            return None
+
+        # Doctor MUST have a valid hospital
+        if 'role' in values and values['role'] == 'doctor':
+            allowed = ["hospitalA", "hospitalB", "hospitalC"]
+            if not v:
+                 raise ValueError("Doctors must belong to a hospital.")
+            if v not in allowed:
+                raise ValueError(f"Invalid hospital. Must be one of {allowed}")
+        
+        return v
+
+    @field_validator('role')
+    def validate_role(cls, v):
+        if v not in ["doctor", "patient", "government"]:
+            raise ValueError("Role must be 'doctor', 'patient', or 'government'")
+        return v
+
+# --- 2. SMART REGISTRATION ENDPOINT ---
+@router.post("/register", status_code=status.HTTP_201_CREATED)
+async def register(user: UserRegister):
+    db = await get_database()
+    
+    # A. ABHA VALIDATION (For Patients Only)
+    clean_abha = None
+    if user.role == "patient":
+        if not user.abha_number:
+            raise HTTPException(status_code=400, detail="ABHA Number is required for patients")
+        
+        # Remove dashes/spaces
+        clean_abha = user.abha_number.replace("-", "").replace(" ", "")
+        
+        # Strict 14-digit check
+        if not clean_abha.isdigit() or len(clean_abha) != 14:
+             raise HTTPException(status_code=400, detail="Invalid ABHA Number. Must be exactly 14 digits.")
+             
+        # Check if ABHA already exists
+        if await db["users"].find_one({"abha_number": clean_abha}):
+            raise HTTPException(status_code=400, detail="This ABHA Number is already registered")
+
+    # B. Check if Email already exists (For everyone)
+    if await db["users"].find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
-    # Hash the password
-    hashed_password = get_password_hash(patient.password)
-
-    # Save to MongoDB
-    user_dict = patient.model_dump()
-    user_dict["password"] = hashed_password
+    # C. Hash Password
+    hashed_password = get_password_hash(user.password)
     
-    new_user = await db["users"].insert_one(user_dict)
-
-    # Return the created user
-    created_user = await db["users"].find_one({"_id": new_user.inserted_id})
-    return created_user
-
-@router.post("/register/doctor", response_model=UserResponse)
-async def register_doctor(doctor: DoctorCreate):
-    db = await get_database()
-
-    # 1. Check if email already exists
-    if await db["users"].find_one({"email": doctor.email}):
-        raise HTTPException(status_code=400, detail="Email already registered")
-
-    # 2. Hash the password
-    hashed_password = get_password_hash(doctor.password)
-
-    # 3. Save to MongoDB
-    user_dict = doctor.model_dump()
-    user_dict["password"] = hashed_password
+    # D. Prepare User Object
+    new_user = {
+        "full_name": user.full_name,
+        "email": user.email,
+        "password": hashed_password,
+        "role": user.role,      
+        "hospital": user.hospital,
+        "created_at": datetime.utcnow()
+    }
     
-    new_user = await db["users"].insert_one(user_dict)
+    # Add ABHA only if patient
+    if user.role == "patient":
+        new_user["abha_number"] = clean_abha
 
-    # 4. Return the created user
-    created_user = await db["users"].find_one({"_id": new_user.inserted_id})
-    return created_user
+    # E. Save to DB
+    result = await db["users"].insert_one(new_user)
+    
+    return {
+        "id": str(result.inserted_id),
+        "message": f"{user.role.capitalize()} registered successfully"
+    }
 
-
-# --- LOGIN (UPDATED) ---
+# --- 3. SMART LOGIN (Email OR ABHA) ---
 @router.post("/login")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     db = await get_database()
     
-    # OAuth2 form uses 'username', but we treat it as email
-    user = await db["users"].find_one({"email": form_data.username})
+    # INPUT CLEANING
+    login_input = form_data.username.strip()
+    
+    # SMART QUERY: Check if input matches Email OR ABHA Number
+    # If input is digits (14 chars), treat as ABHA. Otherwise treat as Email.
+    clean_input = login_input.replace("-", "").replace(" ", "")
+    
+    query = {}
+    if clean_input.isdigit() and len(clean_input) == 14:
+        query = {"abha_number": clean_input}
+    else:
+        query = {"email": login_input}
+        
+    user = await db["users"].find_one(query)
     
     if not user or not verify_password(form_data.password, user["password"]):
         raise HTTPException(
             status_code=401,
-            detail="Incorrect email or password",
+            detail="Incorrect email/ABHA or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Generate Token
-    access_token_expires = timedelta(minutes=30)
+    # TOKEN GENERATION
+    access_token_expires = timedelta(minutes=60)
     
-    # We add the 'type' inside the token data too, just in case
+    # We embed Critical Info in the token so the Frontend is smart
+    token_payload = {
+        "sub": user["email"], 
+        "role": user["role"],
+        "hospital": user.get("hospital"),
+        "abha": user.get("abha_number") # Embed ABHA if it exists
+    }
+    
     access_token = create_access_token(
-        data={"sub": user["email"], "type": user["user_type"]}, 
+        data=token_payload, 
         expires_delta=access_token_expires
     )
     
-    # 👇 THIS IS THE CRITICAL FIX 👇
-    # We now return user_type and full_name so the Frontend can save it.
     return {
         "access_token": access_token, 
         "token_type": "bearer",
-        "user_type": user["user_type"],  # <--- Sending the role!
+        "role": user["role"],
+        "hospital": user.get("hospital"),
         "full_name": user["full_name"]
     }
 
-# --- SECURITY CHECK (The "Bouncer") ---
+# --- 4. CURRENT USER UTILITY ---
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -116,9 +183,6 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     if user is None:
         raise credentials_exception
 
+    # Return the user dict (convert ObjectId to str if needed)
+    user["_id"] = str(user["_id"])
     return user
-
-# --- PROTECTED ROUTE (VIP Room) ---
-@router.get("/me", response_model=UserResponse)
-async def read_users_me(current_user: dict = Depends(get_current_user)):
-    return current_user
