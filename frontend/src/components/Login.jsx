@@ -1,83 +1,116 @@
 import { useState } from "react";
 import axios from "axios";
-// ✅ FIXED: Only one import line for router tools
-import { useNavigate, Link } from "react-router-dom"; 
+import { useNavigate, Link } from "react-router-dom";
 
-// Uses the Cloud URL if available
+// Use Cloud URL or Localhost automatically
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Login() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [formData, setFormData] = useState({
+    username: "", // This can be Email OR ABHA Number
+    password: ""
+  });
+  
   const [error, setError] = useState("");
   const navigate = useNavigate();
 
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
-    setError(""); 
+    setError("");
 
     try {
-      const formData = new URLSearchParams();
-      formData.append("username", email);
-      formData.append("password", password);
+      // 1. Format data for FastAPI (OAuth2 expects form-urlencoded, NOT JSON)
+      const params = new URLSearchParams();
+      params.append('username', formData.username);
+      params.append('password', formData.password);
 
-      const response = await axios.post(
-        `${API_BASE_URL}/api/auth/login`,
-        formData,
-        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-      );
+      // 2. Send Request
+      const response = await axios.post(`${API_BASE_URL}/api/auth/login`, params, {
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
 
-      localStorage.setItem("token", response.data.access_token);
-      localStorage.setItem("user_type", response.data.user_type);
-      localStorage.setItem("full_name", response.data.full_name);
+      // 3. Extract Token and User Data
+      const { access_token, role, full_name, hospital } = response.data;
 
-      alert("Login Successful! Redirecting...");
-      navigate("/dashboard"); 
+      // 4. Save to Local Storage (The Browser's Safe)
+      localStorage.setItem("token", access_token);
+      localStorage.setItem("role", role);
+      localStorage.setItem("user_name", full_name);
+      if (hospital) localStorage.setItem("hospital", hospital);
+
+      // 5. Success Feedback
+      alert(`Welcome back, ${full_name}!`);
       
+      // 6. Redirect to Dashboard (We will build this next!)
+      navigate("/dashboard");
+
     } catch (err) {
-      console.error(err);
-      setError("Invalid email or password");
+      console.error("Login Error:", err);
+      setError("Invalid Credentials. Please try again.");
     }
   };
 
   return (
-    <div style={{ maxWidth: "300px", margin: "50px auto", textAlign: "center", fontFamily: "Arial, sans-serif" }}>
-      <h2 style={{ color: "#0056b3" }}>🏥 User Login </h2>
-      {error && <p style={{ color: "red" }}>{error}</p>}
+    <div style={{ maxWidth: "400px", margin: "100px auto", textAlign: "center", fontFamily: "Arial, sans-serif" }}>
+      <h2 style={{ color: "#0056b3" }}>🔐 Secure Login</h2>
       
+      {error && <div style={{ 
+          color: "#721c24", 
+          backgroundColor: "#f8d7da", 
+          padding: "10px", 
+          marginBottom: "15px", 
+          borderRadius: "5px" 
+      }}>{error}</div>}
+
       <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+        
+        <input 
+            type="text" 
+            name="username" 
+            placeholder="Email Address OR ABHA Number" 
+            value={formData.username} 
+            onChange={handleChange} 
+            required 
+            style={inputStyle} 
         />
         
-        <input
-          type="password"
-          placeholder="Password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          style={{ padding: "10px", borderRadius: "5px", border: "1px solid #ccc" }}
+        <input 
+            type="password" 
+            name="password" 
+            placeholder="Password" 
+            value={formData.password} 
+            onChange={handleChange} 
+            required 
+            style={inputStyle} 
         />
 
-        <button type="submit" style={{ padding: "10px", cursor: "pointer", backgroundColor: "#0056b3", color: "white", border: "none", borderRadius: "5px", fontWeight: "bold" }}>
+        <button type="submit" style={{ 
+            padding: "12px", 
+            cursor: "pointer", 
+            backgroundColor: "#28a745", 
+            color: "white", 
+            border: "none", 
+            borderRadius: "5px", 
+            fontWeight: "bold", 
+            fontSize: "1em" 
+        }}>
           Login
         </button>
       </form>
 
-      {/* ✅ FIXED: Link is now nicely placed at the bottom */}
-      <div style={{ marginTop: "20px", fontSize: "0.9em" }}>
-        <p>Don't have an account?</p>
-        <Link to="/register" style={{ color: "#0056b3", fontWeight: "bold", textDecoration: "none" }}>
-            👉 Create an Account
-        </Link>
-      </div>
+      <p style={{ marginTop: "20px" }}>
+        New here? <Link to="/register" style={{ color: "#0056b3" }}>Create an Account</Link>
+      </p>
     </div>
   );
 }
+
+const inputStyle = { padding: "12px", borderRadius: "5px", border: "1px solid #ccc", fontSize: "1em" };
 
 export default Login;
