@@ -27,14 +27,19 @@ function Dashboard() {
 
   useEffect(() => {
     const token = localStorage.getItem("token");
-    // 👇 FIX: Use 'role' instead of 'user_type' to match backend
-    const role = localStorage.getItem("role"); 
+    
+    // ✅ ROBUST FIX: Check both "role" (backend standard) AND "user_type" (frontend legacy)
+    // If "role" is missing, it falls back to "user_type".
+    const role = localStorage.getItem("role") || localStorage.getItem("user_type");
+    
     const name = localStorage.getItem("full_name");
+
+    console.log("Debug - Role Found:", role); // 👈 Check your browser console for this!
 
     if (!token) {
       navigate("/"); 
     } else {
-      setUserRole(role);
+      setUserRole(role); 
       setFullName(name);
       
       // Only fetch medical records if NOT government
