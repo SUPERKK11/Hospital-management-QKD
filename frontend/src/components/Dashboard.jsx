@@ -4,38 +4,33 @@ import { useNavigate } from "react-router-dom";
 import TransferControl from '../components/TransferControl';
 import GovernmentView from '../components/GovernmentView';
 
-// ✅ Connection to your Backend
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Dashboard() {
   const [userRole, setUserRole] = useState("");
   const [fullName, setFullName] = useState("");
   
-  // --- SHARED DATA STATE ---
+  // Data State
   const [allRecords, setAllRecords] = useState([]); 
   const [displayedRecords, setDisplayedRecords] = useState([]); 
   
-  // --- DOCTOR SPECIFIC STATE ---
+  // Doctor: Form Inputs
   const [patientEmail, setPatientEmail] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [prescription, setPrescription] = useState(""); 
+
+  // Doctor: Search Inputs
   const [searchQuery, setSearchQuery] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
-  // --- PATIENT SPECIFIC STATE (Hospital & Doctor Lookup) ---
-  const [hospitals, setHospitals] = useState(["Hospital A", "Hospital B", "Hospital C"]); 
-  const [selectedHospital, setSelectedHospital] = useState("");
-  const [doctorsList, setDoctorsList] = useState([]);
-  const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
-
   // --- 📐 RESIZABLE LOGIC START ---
-  const [leftWidth, setLeftWidth] = useState(400); 
+  const [leftWidth, setLeftWidth] = useState(400); // Initial width of Left Panel (px)
   const isResizing = useRef(false);
 
   const startResizing = useCallback(() => {
     isResizing.current = true;
-    document.body.style.cursor = "col-resize"; 
-    document.body.style.userSelect = "none"; 
+    document.body.style.cursor = "col-resize"; // Change cursor globally
+    document.body.style.userSelect = "none";   // Prevent text selection while dragging
   }, []);
 
   const stopResizing = useCallback(() => {
@@ -46,6 +41,7 @@ function Dashboard() {
 
   const resize = useCallback((e) => {
     if (isResizing.current) {
+      // Limit min/max width constraints (Min 300px, Max 800px)
       const newWidth = Math.min(Math.max(e.clientX, 300), window.innerWidth - 400);
       setLeftWidth(newWidth);
     }
@@ -80,7 +76,6 @@ function Dashboard() {
     }
   }, [navigate]);
 
-  // Fetch Patient Records
   const initialFetch = async (token, role) => {
     try {
       const response = await axios.get(`${API_BASE_URL}/api/records/my-records`, {
@@ -95,32 +90,6 @@ function Dashboard() {
       console.error("Error fetching records:", err);
     }
   };
-
-  // --- 🏥 REAL BACKEND FETCHING LOGIC ---
-  const handleHospitalChange = async (e) => {
-    const hospitalName = e.target.value;
-    setSelectedHospital(hospitalName);
-    setDoctorsList([]); // Clear previous list
-
-    if (!hospitalName) return;
-
-    setIsLoadingDoctors(true);
-
-    try {
-        // ✅ REAL API CALL: Fetch doctors from YOUR backend
-        // This matches the `app/api/doctors.py` route
-        const response = await axios.get(`${API_BASE_URL}/api/doctors?hospital=${encodeURIComponent(hospitalName)}`);
-        
-        setDoctorsList(response.data);
-        setIsLoadingDoctors(false);
-
-    } catch (error) {
-        console.error("Failed to fetch doctors from backend", error);
-        // Optional: Only show alert if it's a network error, not if the list is just empty
-        setIsLoadingDoctors(false);
-    }
-  };
-
 
   const handleSearch = () => {
     if (!searchQuery.trim()) {
@@ -194,202 +163,96 @@ function Dashboard() {
                 <p className="text-xs text-gray-500">User: {fullName} | {userRole === "doctor" ? "👨‍⚕️ Doctor" : "👤 Patient"}</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* 🤖 NEW AI BUTTON (Only for Doctors) */}
-            {userRole === "doctor" && (
-                <button 
-                    onClick={() => navigate('/ai-diagnosis')} 
-                    className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 text-sm font-medium transition shadow-sm flex items-center gap-2"
-                >
-                    <span>✨</span> AI Diagnosis
-                </button>
-            )}
-            
-            <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 text-sm font-medium transition">
-                Logout
-            </button>
-          </div>
+          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 text-sm font-medium transition">
+            Logout
+          </button>
       </header>
 
       {/* SPLIT CONTAINER */}
       <div className="flex-1 flex overflow-hidden w-full relative">
         
-        {/* === LEFT PANEL: SHARED (Different Content based on Role) === */}
-        <div 
-            className="flex flex-col bg-white border-r border-gray-200 h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10"
-            style={{ width: leftWidth, minWidth: 300 }} 
-        >
-            {/* --- DOCTOR VIEW: Create Record --- */}
-            {userRole === "doctor" && (
-                <>
-                    <div className="p-5 border-b border-gray-100 bg-gray-50 flex-none">
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2">
-                            📝 New Diagnosis
-                        </h3>
-                    </div>
-                    <div className="p-5 overflow-y-auto flex-1">
-                        <form onSubmit={handleCreateRecord} className="flex flex-col gap-5">
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Patient Email</label>
-                                <input 
-                                    type="email" 
-                                    placeholder="patient@gmail.com" 
-                                    value={patientEmail} 
-                                    onChange={(e) => setPatientEmail(e.target.value)} 
-                                    required 
-                                    className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
-                                />
-                            </div>
-                            <div>
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Diagnosis</label>
-                                <input 
-                                    type="text" 
-                                    placeholder="ex: Viral Fever" 
-                                    value={diagnosis} 
-                                    onChange={(e) => setDiagnosis(e.target.value)} 
-                                    required 
-                                    className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
-                                />
-                            </div>
-                            <div className="flex-1 flex flex-col">
-                                <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Prescription</label>
-                                <textarea 
-                                    placeholder="Treatment details..." 
-                                    value={prescription} 
-                                    onChange={(e) => setPrescription(e.target.value)} 
-                                    required 
-                                    className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none shadow-sm h-48"
-                                />
-                            </div>
-                            <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md mt-auto">
-                                Submit Record
-                            </button>
-                        </form>
-                    </div>
-                </>
-            )}
-
-            {/* --- PATIENT VIEW: Doctor Directory --- */}
-            {userRole === "patient" && (
-                <>
-                    <div className="p-5 border-b border-gray-100 bg-gray-50 flex-none bg-blue-50">
-                        <h3 className="font-bold text-gray-800 flex items-center gap-2 text-lg mb-2">
-                            🏥 Find a Doctor
-                        </h3>
-                        <p className="text-xs text-gray-500 mb-4">Select a hospital to view available specialists.</p>
-                        
-                        {/* Hospital Dropdown */}
-                        <div className="relative">
-                            <label className="text-xs text-gray-600 font-bold uppercase tracking-wide mb-1 block">Select Hospital</label>
-                            <select 
-                                value={selectedHospital}
-                                onChange={handleHospitalChange}
-                                className="w-full p-3 text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none shadow-sm cursor-pointer"
-                            >
-                                <option value="" disabled>-- Choose a Hospital --</option>
-                                {hospitals.map((h) => (
-                                    <option key={h} value={h}>{h}</option>
-                                ))}
-                            </select>
+        {/* === LEFT PANEL: CREATE RECORD (Doctors Only) === */}
+        {userRole === "doctor" && (
+            <div 
+                className="flex flex-col bg-white border-r border-gray-200 h-full shadow-[4px_0_24px_rgba(0,0,0,0.02)] z-10"
+                style={{ width: leftWidth, minWidth: 300 }} // Dynamic Width
+            >
+                <div className="p-5 border-b border-gray-100 bg-gray-50 flex-none">
+                    <h3 className="font-bold text-gray-800 flex items-center gap-2">
+                        📝 New Diagnosis
+                    </h3>
+                </div>
+                
+                <div className="p-5 overflow-y-auto flex-1">
+                    <form onSubmit={handleCreateRecord} className="flex flex-col gap-5">
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Patient Email</label>
+                            <input 
+                                type="email" 
+                                placeholder="patient@gmail.com" 
+                                value={patientEmail} 
+                                onChange={(e) => setPatientEmail(e.target.value)} 
+                                required 
+                                className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
+                            />
                         </div>
-                    </div>
-                    
-                    <div className="flex-1 overflow-y-auto bg-white relative">
-                        {/* Initial State */}
-                        {!selectedHospital && (
-                            <div className="flex flex-col items-center justify-center h-full text-gray-400 p-8 text-center">
-                                <div className="text-4xl mb-2">👆</div>
-                                <p className="text-sm">Please select a hospital from the dropdown above.</p>
-                            </div>
-                        )}
+                        <div>
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Diagnosis</label>
+                            <input 
+                                type="text" 
+                                placeholder="ex: Viral Fever" 
+                                value={diagnosis} 
+                                onChange={(e) => setDiagnosis(e.target.value)} 
+                                required 
+                                className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm shadow-sm"
+                            />
+                        </div>
+                        <div className="flex-1 flex flex-col">
+                            <label className="text-xs font-bold text-gray-500 uppercase tracking-wide">Prescription</label>
+                            <textarea 
+                                placeholder="Treatment details..." 
+                                value={prescription} 
+                                onChange={(e) => setPrescription(e.target.value)} 
+                                required 
+                                className="w-full p-3 mt-1 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none shadow-sm h-48"
+                            />
+                        </div>
+                        <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md mt-auto">
+                            Submit Record
+                        </button>
+                    </form>
+                </div>
+            </div>
+        )}
 
-                        {/* Loading State */}
-                        {isLoadingDoctors && (
-                            <div className="flex flex-col items-center justify-center h-full text-blue-500">
-                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"></div>
-                                <p className="text-xs font-bold">Fetching Doctor List from Server...</p>
-                            </div>
-                        )}
+        {/* === DRAGGER BAR (The Handle) === */}
+        {userRole === "doctor" && (
+            <div
+                className="w-2 hover:w-2 bg-gray-100 hover:bg-blue-400 cursor-col-resize flex-none transition-colors duration-150 flex items-center justify-center group z-20 border-l border-r border-gray-200"
+                onMouseDown={startResizing}
+            >
+                {/* Visual Grip Handle */}
+                <div className="h-8 w-1 bg-gray-300 rounded-full group-hover:bg-white"></div>
+            </div>
+        )}
 
-                        {/* Doctor List */}
-                        {!isLoadingDoctors && selectedHospital && doctorsList.length > 0 && (
-                            <div className="divide-y divide-gray-100">
-                                <div className="p-3 bg-gray-50 text-xs font-bold text-gray-500 uppercase">
-                                    Doctors at {selectedHospital}
-                                </div>
-                                {doctorsList.map((doc) => (
-                                    <div key={doc.id} className="p-4 hover:bg-blue-50 transition cursor-pointer flex justify-between items-center group">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center text-lg">👨‍⚕️</div>
-                                            <div>
-                                                {/* Use the exact keys from backend DoctorResponse schema */}
-                                                <div className="font-bold text-gray-800 text-sm group-hover:text-blue-700">
-                                                    {doc.name}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                    {doc.spec}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide ${
-                                            doc.status === "Available" ? "bg-green-100 text-green-700" :
-                                            "bg-gray-100 text-gray-500"
-                                        }`}>
-                                            {doc.status}
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Empty State */}
-                        {!isLoadingDoctors && selectedHospital && doctorsList.length === 0 && (
-                            <div className="p-8 text-center text-gray-400 text-sm">
-                                No doctors found for {selectedHospital} in the database.
-                            </div>
-                        )}
-                    </div>
-                </>
-            )}
-        </div>
-
-        {/* === DRAGGER BAR (Shared) === */}
-        <div
-            className="w-2 hover:w-2 bg-gray-100 hover:bg-blue-400 cursor-col-resize flex-none transition-colors duration-150 flex items-center justify-center group z-20 border-l border-r border-gray-200"
-            onMouseDown={startResizing}
-        >
-            <div className="h-8 w-1 bg-gray-300 rounded-full group-hover:bg-white"></div>
-        </div>
-
-        {/* === RIGHT PANEL: HISTORY (Shared) === */}
+        {/* === RIGHT PANEL: HISTORY (Takes remaining space) === */}
         <div className="flex-1 flex flex-col bg-gray-50 h-full overflow-hidden relative">
             
             {/* Header */}
             <div className="flex-none p-5 border-b border-gray-200 bg-white shadow-sm z-10">
                 <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2">
+                    <h3 className="font-bold text-gray-800 text-lg">
                         {userRole === "doctor" ? "🔍 Patient History Lookup" : "📂 My Medical History"}
                     </h3>
-                    
-                    {/* BUTTON FOR PATIENT TO REFRESH HISTORY */}
-                    {userRole === "patient" && (
-                         <button 
-                            onClick={() => initialFetch(localStorage.getItem('token'), 'patient')}
-                            className="text-xs bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg font-medium shadow-sm transition flex items-center gap-1"
-                        >
-                            <span>🔄</span> Refresh History
-                        </button>
-                    )}
-
                     {hasSearched && userRole === "doctor" && (
-                            <span className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium">
+                         <span className="text-xs bg-blue-100 text-blue-800 px-3 py-1 rounded-full font-medium">
                             {displayedRecords.length} Records Found
-                            </span>
+                         </span>
                     )}
                 </div>
 
-                {/* Search Bar (Doctor Only) */}
+                {/* Search Bar */}
                 {userRole === "doctor" && (
                     <div className="flex gap-2 max-w-2xl">
                         <input 
