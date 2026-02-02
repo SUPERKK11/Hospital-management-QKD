@@ -1,23 +1,17 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
-// Get API URL from environment
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const TransferControl = ({ recordId }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [target, setTarget] = useState("hospitalB"); // Default to ID, not name
+  const [target, setTarget] = useState("General Hospital C"); // Default target
   const [error, setError] = useState("");
 
   const handleTransfer = async () => {
-    // 1. Safety Check: Did the parent pass the ID?
-    if (!recordId) {
-        alert("❌ Error: Cannot transfer. Record ID is missing.");
-        console.error("TransferControl Error: recordId prop is undefined.");
-        return;
-    }
-
+    if (!recordId) return alert("Error: Record ID missing.");
+    
     setLoading(true);
     setResult(null);
     setError("");
@@ -25,13 +19,11 @@ const TransferControl = ({ recordId }) => {
     try {
       const token = localStorage.getItem('token');
       
-      // 2. Prepare Payload (MUST match Backend Pydantic Model)
+      // ✅ Matches your new Backend "TransferRequest" model
       const payload = { 
           record_id: recordId, 
-          target_hospital_name: target // <--- FIXED: Matches backend
+          target_hospital_name: target 
       };
-
-      console.log("🚀 Sending Transfer Request:", payload);
 
       const response = await axios.post(
         `${API_BASE_URL}/api/transfer/execute`, 
@@ -39,14 +31,11 @@ const TransferControl = ({ recordId }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // 3. Show Success
       setResult(response.data);
 
     } catch (err) {
       console.error("Transfer Error:", err);
-      // specific error message from backend if available
-      const serverMsg = err.response?.data?.detail?.[0]?.msg || err.message;
-      setError(`Transfer Failed: ${serverMsg}`);
+      setError("Transfer Failed: " + (err.response?.data?.detail || "Server Error"));
     } finally {
       setLoading(false);
     }
@@ -60,16 +49,14 @@ const TransferControl = ({ recordId }) => {
       
       {!result ? (
         <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-sm text-gray-600">Send to:</span>
           <select 
             value={target} 
             onChange={(e) => setTarget(e.target.value)}
             className="p-2 border rounded text-sm bg-white"
           >
-            {/* Values must match valid Hospital IDs in your logic */}
-            <option value="hospitalA">Hospital A </option>
-            <option value="hospitalB">Hospital B </option>
-            <option value="researchC">Hospital C</option>
+            <option>City Hospital B</option>
+            <option>General Hospital C</option>
+            <option>Research Institute D</option>
           </select>
           
           <button 
@@ -81,18 +68,27 @@ const TransferControl = ({ recordId }) => {
           >
             {loading ? "Establishing QKD Link..." : "🚀 Initiate Transfer"}
           </button>
-          {error && <span className="text-red-500 text-xs block w-full mt-2">{error}</span>}
+          {error && <span className="text-red-500 text-xs block w-full">{error}</span>}
         </div>
       ) : (
         <div className="animate-fade-in">
           <div className="p-2 bg-green-100 text-green-800 rounded mb-3 text-sm border border-green-200">
-            ✅ <strong>Secure Link Established!</strong>
+            ✅ <strong>Transfer Complete!</strong> Sent to {result.receiver}.
           </div>
 
-          <div className="grid grid-cols-1 gap-3 text-xs font-mono">
+          {/* Technical Stats Display */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
             <div className="bg-gray-900 text-green-400 p-3 rounded shadow-inner">
-              <div className="mb-1">KEY_HASH: {result.qkd_key || "HIDDEN"}</div>
-              <div>STATUS: SECURE_TRANSMISSION</div>
+              <div className="text-gray-500 mb-1 border-b border-gray-700">QKD PROTOCOL Stats</div>
+              <div>BITS: {result.qkd_stats.bits_exchanged}</div>
+              <div className="truncate">HASH: {result.qkd_stats.transmission_key_hash}</div>
+            </div>
+
+            <div className="bg-gray-900 text-yellow-400 p-3 rounded shadow-inner">
+              <div className="text-gray-500 mb-1 border-b border-gray-700">ENCRYPTED PACKET</div>
+              <div className="break-all opacity-80">
+                {result.secure_payload.encrypted_diagnosis.substring(0, 40)}...
+              </div>
             </div>
           </div>
           
