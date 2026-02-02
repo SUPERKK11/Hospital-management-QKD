@@ -1,46 +1,4 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-:root {
-  --primary-color: #0056b3; /* Hospital Blue */
-  --secondary-color: #f0f8ff; /* Light Alice Blue */
-  --text-color: #333;
-  --white: #ffffff;
-  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
 
-body {
-  margin: 0;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: var(--secondary-color);
-  color: var(--text-color);
-  -webkit-font-smoothing: antialiased;
-}
-
-button {
-  background-color: var(--primary-color);
-  color: var(--white);
-  border: none;
-  padding: 10px 20px;
-  border-radius: 5px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.3s ease;
-}
-
-button:hover {
-  background-color: #004494; /* Darker blue on hover */
-}
-
-input {
-  width: 100%;
-  padding: 10px;
-  margin: 8px 0;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  box-sizing: border-box; /* Ensures padding doesn't widen the box */
-}
-
-h1, h2, h3 {
-  color: var(--primary-color);
-}
