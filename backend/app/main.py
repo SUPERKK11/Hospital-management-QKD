@@ -4,12 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.mongodb import connect_to_mongo, close_mongo_connection
 
-# --- Import Routers ---
+# --- Import All Routers ---
 from app.api.auth import router as auth_router
 from app.api.records import router as records_router 
-from app.api.transfer import router as transfer_router 
-# If you have an AI file (e.g., ai.py), import it here. If not, comment the next line out.
-# from app.api.ai import router as ai_router 
+from app.api.transfer import router as transfer_router
+from app.api.abha import router as abha_router
+from app.api.ai import router as ai_router  # 👈 Now importing from the new file
 
 # --- Lifespan: Handles startup and shutdown ---
 @asynccontextmanager
@@ -29,9 +29,17 @@ app = FastAPI(
 )
 
 # --- CORS Middleware ---
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://hospital-management-qkd.netlify.app",
+    "https://hospital-management-qkd.vercel.app",
+    "*" 
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,14 +49,17 @@ app.add_middleware(
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(records_router, prefix="/api/records", tags=["Medical Records"])
 app.include_router(transfer_router, prefix="/api/transfer", tags=["QKD Transfer"])
-
-# If you have AI logic ready:
-# app.include_router(ai_router, prefix="/api", tags=["AI"]) 
+app.include_router(abha_router, prefix="/api/abha", tags=["ABHA Integration"])
+app.include_router(ai_router, prefix="/api", tags=["AI Triage"]) 
 
 # --- Root Endpoint ---
 @app.get("/")
 def read_root():
-    return {"status": "System Online", "database": settings.DB_NAME}
+    return {
+        "status": "System Online", 
+        "database": settings.DB_NAME, 
+        "modules": ["Auth", "Records", "QKD Transfer", "ABHA", "AI"]
+    }
 
 if __name__ == "__main__":
     import uvicorn
