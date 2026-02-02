@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import TransferControl from '../components/TransferControl';
-import GovernmentView from '../components/GovernmentView'; // 👈 IMPORT NEW COMPONENT
+import GovernmentView from '../components/GovernmentView';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
@@ -28,13 +28,11 @@ function Dashboard() {
   useEffect(() => {
     const token = localStorage.getItem("token");
     
-    // ✅ ROBUST FIX: Check both "role" (backend standard) AND "user_type" (frontend legacy)
-    // If "role" is missing, it falls back to "user_type".
+    // ✅ Check both "role" (backend standard) AND "user_type" (legacy)
     const role = localStorage.getItem("role") || localStorage.getItem("user_type");
-    
     const name = localStorage.getItem("full_name");
 
-    console.log("Debug - Role Found:", role); // 👈 Check your browser console for this!
+    console.log("Debug - Role Found:", role); 
 
     if (!token) {
       navigate("/"); 
@@ -228,7 +226,7 @@ function Dashboard() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
             {records.map((rec) => (
-              <div key={rec.id} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", backgroundColor: "white", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
+              <div key={rec.id || rec._id} style={{ border: "1px solid #ccc", padding: "15px", borderRadius: "8px", backgroundColor: "white", boxShadow: "0 2px 4px rgba(0,0,0,0.1)" }}>
                 <div style={{display: 'flex', justifyContent: 'space-between'}}>
                     <h4 style={{ margin: "0 0 5px 0", color: "#0056b3" }}>{rec.diagnosis}</h4>
                     <span style={{ fontSize: "0.8em", background: "#d1ecf1", padding: "2px 8px", borderRadius: "10px", color: "#0c5460" }}>
@@ -240,11 +238,11 @@ function Dashboard() {
                   Patient: {rec.patient_email} | Date: {new Date(rec.created_at).toLocaleDateString()}
                 </p>
 
-                {/* 👇 FIX: Pass 'id' not '_id' */}
+                {/* 👇 CRITICAL FIX: Ensure ID is passed correctly (Handles Mongo '_id' vs Python 'id') */}
                 {userRole === "doctor" && (
                     <>
                         <hr style={{border: "0", borderTop: "1px solid #eee", margin: "10px 0"}}/>
-                        <TransferControl recordId={rec.id} />
+                        <TransferControl recordId={rec.id || rec._id} />
                     </>
                 )}
               </div>

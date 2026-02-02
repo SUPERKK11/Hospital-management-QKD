@@ -1,14 +1,23 @@
-// frontend/src/components/TransferControl.jsx
 import React, { useState } from 'react';
 import axios from 'axios';
+
+// Get API URL from environment
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 const TransferControl = ({ recordId }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [target, setTarget] = useState("City Hospital B");
+  const [target, setTarget] = useState("hospitalB"); // Default to ID, not name
   const [error, setError] = useState("");
 
   const handleTransfer = async () => {
+    // 1. Safety Check: Did the parent pass the ID?
+    if (!recordId) {
+        alert("❌ Error: Cannot transfer. Record ID is missing.");
+        console.error("TransferControl Error: recordId prop is undefined.");
+        return;
+    }
+
     setLoading(true);
     setResult(null);
     setError("");
@@ -16,21 +25,28 @@ const TransferControl = ({ recordId }) => {
     try {
       const token = localStorage.getItem('token');
       
-      // 1. Call our new Backend Endpoint
-      const response = await axios.post('http://localhost:8000/api/transfer/execute', 
-        { 
+      // 2. Prepare Payload (MUST match Backend Pydantic Model)
+      const payload = { 
           record_id: recordId, 
-          target_hospital_name: target 
-        },
+          recipient_hospital_id: target // <--- FIXED: Matches backend
+      };
+
+      console.log("🚀 Sending Transfer Request:", payload);
+
+      const response = await axios.post(
+        `${API_BASE_URL}/api/transfer/execute`, 
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // 2. Show the "Secure Payload"
+      // 3. Show Success
       setResult(response.data);
 
     } catch (err) {
-      console.error(err);
-      setError("Transfer Failed. Check console.");
+      console.error("Transfer Error:", err);
+      // specific error message from backend if available
+      const serverMsg = err.response?.data?.detail?.[0]?.msg || err.message;
+      setError(`Transfer Failed: ${serverMsg}`);
     } finally {
       setLoading(false);
     }
@@ -50,9 +66,10 @@ const TransferControl = ({ recordId }) => {
             onChange={(e) => setTarget(e.target.value)}
             className="p-2 border rounded text-sm bg-white"
           >
-            <option>City Hospital B</option>
-            <option>General Hospital C</option>
-            <option>Research Institute D</option>
+            {/* Values must match valid Hospital IDs in your logic */}
+            <option value="hospitalA">Hospital A (City)</option>
+            <option value="hospitalB">Hospital B (West)</option>
+            <option value="researchC">Research Lab C</option>
           </select>
           
           <button 
@@ -64,34 +81,18 @@ const TransferControl = ({ recordId }) => {
           >
             {loading ? "Establishing QKD Link..." : "🚀 Initiate Transfer"}
           </button>
-          {error && <span className="text-red-500 text-xs">{error}</span>}
+          {error && <span className="text-red-500 text-xs block w-full mt-2">{error}</span>}
         </div>
       ) : (
         <div className="animate-fade-in">
-          {/* Success Header */}
           <div className="p-2 bg-green-100 text-green-800 rounded mb-3 text-sm border border-green-200">
-            ✅ <strong>Secure Link Established!</strong> Data sent to {result.receiver}.
+            ✅ <strong>Secure Link Established!</strong>
           </div>
 
-          {/* THE HACKER VIEW (Tech Stats) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-            
-            {/* Box 1: Quantum Key Stats */}
+          <div className="grid grid-cols-1 gap-3 text-xs font-mono">
             <div className="bg-gray-900 text-green-400 p-3 rounded shadow-inner">
-              <div className="text-gray-500 mb-1 border-b border-gray-700 pb-1">PROTOCOL: {result.qkd_stats.protocol}</div>
-              <div className="mb-1">KEY_HASH: {result.qkd_stats.transmission_key_hash}</div>
-              <div>BITS_EXCHANGED: {result.qkd_stats.bits_exchanged}</div>
-            </div>
-
-            {/* Box 2: The Encrypted Payload */}
-            <div className="bg-gray-900 text-yellow-400 p-3 rounded shadow-inner overflow-hidden">
-              <div className="text-gray-500 mb-1 border-b border-gray-700 pb-1">📦 ENCRYPTED PACKET (Simulated)</div>
-              <div className="break-all opacity-80">
-                {result.secure_payload.encrypted_diagnosis.substring(0, 50)}...
-              </div>
-              <div className="mt-2 text-gray-500 italic">
-                (Only receiver with Quantum Key can decrypt)
-              </div>
+              <div className="mb-1">KEY_HASH: {result.qkd_key || "HIDDEN"}</div>
+              <div>STATUS: SECURE_TRANSMISSION</div>
             </div>
           </div>
           
