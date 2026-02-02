@@ -5,9 +5,9 @@ import { ShieldCheck, Lock, RefreshCw } from 'lucide-react';
 const ReceiverDashboard = () => {
   // Use the EXACT names from your previous dropdown
   const hospitalOptions = [
-    "City General Hospital",
-    "St Marys Clinic",
-    "Research Lab A"
+    "Hospital A",
+    "Hospital B",
+    "Hospital C"
   ];
 
   const [selectedHospital, setSelectedHospital] = useState(hospitalOptions[0]);

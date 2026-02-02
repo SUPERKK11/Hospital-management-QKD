@@ -123,8 +123,7 @@ function Register() {
                 </select>
             </div>
         )}
-
-        <button type="submit" style={{ padding: "12px", cursor: "pointer", backgroundColor: "#0056b3", color: "white", border: "none", borderRadius: "5px", fontWeight: "bold", marginTop: "10px" }}>
+        <button type="submit" style={{ padding: "12px", cursor: "pointer", backgroundColor: "#21a340", color: "white", border: "none", borderRadius: "5px", fontWeight: "bold", marginTop: "10px" }}>
           Register Now
         </button>
       </form>
