@@ -23,7 +23,7 @@ function App() {
                 <div className="border-t border-gray-700 my-8"></div>
             </div>
 
-            <ReceiverDashboard />  {/* The Receiver (Bottom) */}
+            {/* <ReceiverDashboard />  The Receiver (Bottom) */}
           </div>
         } />
       </Routes>
