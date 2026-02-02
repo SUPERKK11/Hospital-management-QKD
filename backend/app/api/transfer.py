@@ -1,188 +1,178 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from typing import List
 from bson import ObjectId
 from datetime import datetime
 import logging
+import hashlib  # 👈 Added for Data Fingerprinting
 
-# ✅ Import Database Dependency
+# Database & Auth
 from app.db.mongodb import get_database
 from motor.motor_asyncio import AsyncIOMotorDatabase
-
-# Import Tools
 from app.api.auth import get_current_user
+
+# Encryption & QKD Tools
 from app.utils.quantum import simulate_qkd_exchange
 from app.utils.encryption import encrypt_data, decrypt_data
-from app.models.record import AuditLog
 
 router = APIRouter()
-
-# Setup Logger
 logger = logging.getLogger(__name__)
 
-# Input model
-class TransferRequest(BaseModel):
-    record_id: str
+# Input Model
+class BatchTransferRequest(BaseModel):
+    record_ids: List[str]
     target_hospital_name: str
 
-@router.post("/execute")
-async def execute_transfer(
-    req: TransferRequest, 
+@router.post("/execute-batch")
+async def execute_batch_transfer(
+    req: BatchTransferRequest, 
     current_user: dict = Depends(get_current_user),
-    # ✅ FIX: Inject Database Connection Safely
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
-    Simulates a QKD-secured transfer.
+    Transfers records ONLY if the data content is new.
+    Allows re-transferring the same patient if their diagnosis has changed.
     """
-    try:
-        # --- 1. FETCH THE RECORD (Hospital A's Storage) ---
-        if not ObjectId.is_valid(req.record_id):
-            raise HTTPException(status_code=400, detail="Invalid Record ID format")
+    summary = {
+        "success": [],
+        "skipped": [],
+        "failed": []
+    }
 
-        record = await db["records"].find_one({"_id": ObjectId(req.record_id)})
-        
-        if not record:
-            raise HTTPException(status_code=404, detail="Record not found")
+    safe_target_name = req.target_hospital_name.lower().strip().replace(" ", "_")
+    target_collection_name = f"inbox_{safe_target_name}"
 
-        # --- 2. DECRYPT THE DATA (Unlock from Storage) ---
-        storage_key = record.get("quantum_key")
-        
-        # Handle cases where data might not be encrypted yet
+    for rid in req.record_ids:
         try:
-            if storage_key:
-                plain_diagnosis = decrypt_data(record["diagnosis"], storage_key)
-                plain_prescription = decrypt_data(record["prescription"], storage_key)
-            else:
-                plain_diagnosis = record["diagnosis"]
-                plain_prescription = record["prescription"]
-        except Exception as e:
-            logger.error(f"Decryption Error: {e}")
-            raise HTTPException(status_code=500, detail="Failed to decrypt source record. Data may be corrupted.")
+            # --- 1. FETCH SOURCE FIRST (To check content) ---
+            if not ObjectId.is_valid(rid):
+                summary["failed"].append({"id": rid, "reason": "Invalid ID"})
+                continue
 
-        # --- 3. PERFORM QKD HANDSHAKE (Generate Transmission Key) ---
-        qkd_session = simulate_qkd_exchange()
-        transmission_key = qkd_session["final_key"]
+            record = await db["records"].find_one({"_id": ObjectId(rid)})
+            if not record:
+                summary["failed"].append({"id": rid, "reason": "Not Found"})
+                continue
 
-        # --- 4. ENCRYPT FOR TRANSMISSION (Lock for Travel) ---
-        secure_diagnosis = encrypt_data(plain_diagnosis, transmission_key)
-        secure_prescription = encrypt_data(plain_prescription, transmission_key)
+            # --- 2. DECRYPT SOURCE DATA ---
+            storage_key = record.get("quantum_key")
+            # We need the plain text to generate the signature
+            try:
+                if storage_key:
+                    plain_diagnosis = decrypt_data(record["diagnosis"], storage_key)
+                else:
+                    plain_diagnosis = record["diagnosis"]
+            except:
+                summary["failed"].append({"id": rid, "reason": "Decryption Error"})
+                continue
 
-        # --- 5. GENERATE THE PACKET (The Digital Envelope) ---
-        transfer_packet = {
-            "status": "success",
-            "sender": current_user.get("hospital", "Unknown"), 
-            "receiver": req.target_hospital_name,
-            "timestamp": datetime.now(),
-            "qkd_stats": {
-                "protocol": "BB84 Simulation",
-                "bits_exchanged": qkd_session.get("raw_bits_length", 256),
-                "transmission_key_hash": transmission_key[:10] + "..." 
-            },
-            "secure_payload": {
-                "patient_id": str(record.get("patient_id", "Unknown")),
+            # --- 3. GENERATE DATA FINGERPRINT (HASH) ---
+            # We create a unique signature based on the Patient ID + Current Diagnosis.
+            # If the diagnosis changes, this signature changes.
+            raw_data_string = f"{record.get('patient_id')}-{plain_diagnosis}"
+            data_signature = hashlib.sha256(raw_data_string.encode()).hexdigest()
+
+            # --- 4. SMART DUPLICATE CHECK ---
+            # We check if this specific VERSION of the data exists in the inbox.
+            existing_transfer = await db[target_collection_name].find_one({
+                "original_record_id": rid,
+                "data_signature": data_signature  # 👈 Check against the signature
+            })
+
+            if existing_transfer:
+                summary["skipped"].append(rid) # Skip ONLY if exact data match
+                continue 
+
+            # --- 5. QKD & ENCRYPT ---
+            # If we get here, the data is new (or updated)
+            qkd_session = simulate_qkd_exchange()
+            transmission_key = qkd_session["final_key"]
+            secure_diagnosis = encrypt_data(plain_diagnosis, transmission_key)
+
+            # --- 6. SAVE TO TARGET INBOX ---
+            transfer_packet = {
+                "original_record_id": rid,
+                "received_from": current_user.get("hospital", "Unknown"),
+                "target_hospital": req.target_hospital_name, 
+                "patient_id": record.get("patient_id"),
                 "encrypted_diagnosis": secure_diagnosis,
-                "encrypted_prescription": secure_prescription,
-                "decryption_key_for_receiver": transmission_key 
+                "decryption_key": transmission_key,
+                "data_signature": data_signature, # 👈 Store signature for future checks
+                "received_at": datetime.now(),
+                "status": "LOCKED"
             }
-        }
+            await db[target_collection_name].insert_one(transfer_packet)
 
-        # --- 6. DYNAMIC TRANSFER (Save to the Correct Inbox) ---
-        safe_target_name = req.target_hospital_name.lower().strip().replace(" ", "_")
-        target_collection_name = f"inbox_{safe_target_name}"
+            # --- 7. AUDIT LOG ---
+            audit_log = {
+                "sender_hospital": current_user.get("hospital", "Unknown"),
+                "receiver_hospital": req.target_hospital_name,
+                "record_id": rid,
+                "status": "SECURE TRANSFER",
+                "timestamp": datetime.now()
+            }
+            await db["audit_logs"].insert_one(audit_log)
 
-        target_record = {
-            "original_record_id": req.record_id,
-            "received_from": current_user.get("hospital", "Unknown"),
-            "target_hospital": req.target_hospital_name, 
-            "patient_id": record.get("patient_id"),
-            "encrypted_diagnosis": secure_diagnosis,
-            "received_at": datetime.now(),
-            "status": "LOCKED (Requires QKD Key)"
-        }
-        
-        await db[target_collection_name].insert_one(target_record)
+            summary["success"].append(rid)
 
-        # --- 7. CREATE GOVERNMENT AUDIT LOG ---
-        new_audit_log = AuditLog(
-            sender_hospital=current_user.get("hospital", "Unknown"),
-            sender_doctor=current_user.get("username", "Unknown"),
-            receiver_hospital=req.target_hospital_name,
-            record_id=req.record_id,
-            qkd_key_id=f"KEY-{transmission_key[:8]}", 
-            status="SECURE (QKD Verified)"
-        )
-        
-        # 👇👇👇 CRITICAL FIX FOR DUPLICATE KEY ERROR 👇👇👇
-        # Convert to dictionary and REMOVE '_id' if it is None.
-        # This tells MongoDB to generate a NEW unique ID automatically.
-        log_data = new_audit_log.dict(by_alias=True)
-        if "_id" in log_data and log_data["_id"] is None:
-            del log_data["_id"]
-            
-        await db["audit_logs"].insert_one(log_data)
-        # 👆👆👆 FIX END 👆👆👆
+        except Exception as e:
+            logger.error(f"Error processing {rid}: {e}")
+            summary["failed"].append({"id": rid, "reason": str(e)})
 
-        return transfer_packet
+    return summary
 
-    except HTTPException as he:
-        raise he # Re-raise expected HTTP errors
-    except Exception as e:
-        # 👇 This captures the real 500 error in your terminal
-        logger.error(f"❌ TRANSFER FAILED: {str(e)}")
-        print(f"❌ CRITICAL TRANSFER ERROR: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Transfer failed: {str(e)}")
-
-
-# ======================================================
-# AUDIT LOGS ENDPOINT
-# ======================================================
-@router.get("/audit-logs")
-async def get_audit_logs(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_database) 
-):
-    """
-    Secured Endpoint: Only for 'government' role.
-    """
-    if current_user.get("role") != "government":
-        raise HTTPException(status_code=403, detail="Access Denied: Government Clearance Required")
-
-    cursor = db["audit_logs"].find().sort("timestamp", -1)
-    logs = await cursor.to_list(length=50)
-    
-    for log in logs:
-        log["id"] = str(log["_id"])
-        del log["_id"]
-        
-    return logs
-
-
-# ======================================================
-# HOSPITAL INBOX ENDPOINT
-# ======================================================
+# ==========================================
+# INBOX ENDPOINT 
+# ==========================================
 @router.get("/inbox/{hospital_name}")
 async def view_hospital_inbox(
     hospital_name: str,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """
-    Reads the encrypted messages from a specific hospital's inbox.
-    """
     safe_name = hospital_name.lower().strip().replace(" ", "_")
-    collection_name = f"inbox_{safe_name}"
+    # Sort by time so newest updates appear at the top
+    cursor = db[f"inbox_{safe_name}"].find().sort("received_at", -1)
+    messages = await cursor.to_list(length=50)
     
-    cursor = db[collection_name].find().sort("received_at", -1)
-    messages = await cursor.to_list(length=20)
-    
-    results = []
     for msg in messages:
-        results.append({
-            "id": str(msg["_id"]),
-            "from": msg.get("received_from", "Unknown"),
-            "time": msg.get("received_at"),
-            "status": msg.get("status", "LOCKED"),
-            "patient_id": msg.get("patient_id", "Unknown"),
-            "encrypted_preview": str(msg.get("encrypted_diagnosis", ""))[:50] + "..."
-        })
+        msg["id"] = str(msg["_id"])
+        del msg["_id"]
+        msg["encrypted_preview"] = str(msg.get("encrypted_diagnosis", ""))[:40] + "..."
         
-    return results
+    return messages
+
+# ==========================================
+# DECRYPT ENDPOINT
+# ==========================================
+class DecryptRequest(BaseModel):
+    inbox_id: str
+
+@router.post("/decrypt-record")
+async def decrypt_inbox_record(
+    req: DecryptRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    my_hospital = current_user.get("hospital")
+    safe_name = my_hospital.lower().strip().replace(" ", "_")
+    collection_name = f"inbox_{safe_name}"
+
+    if not ObjectId.is_valid(req.inbox_id):
+        raise HTTPException(status_code=400, detail="Invalid ID")
+        
+    record = await db[collection_name].find_one({"_id": ObjectId(req.inbox_id)})
+    if not record:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    try:
+        key = record.get("decryption_key")
+        encrypted_text = record.get("encrypted_diagnosis")
+        plaintext = decrypt_data(encrypted_text, key)
+        
+        await db[collection_name].update_one(
+            {"_id": ObjectId(req.inbox_id)},
+            {"$set": {"status": "UNLOCKED"}}
+        )
+        return {"status": "success", "decrypted_diagnosis": plaintext}
+    except Exception:
+        raise HTTPException(status_code=500, detail="Decryption failed")
