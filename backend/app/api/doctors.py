@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from typing import List
 from pydantic import BaseModel
 import logging
+from app.api.auth import get_current_user # <--- ADD THIS
 
 # ✅ Import get_database to use as a dependency
 from app.db.mongodb import get_database
@@ -56,3 +57,30 @@ async def get_doctors_by_hospital(
         logger.error(f"❌ Error fetching doctors: {str(e)}")
         print(f"❌ CRITICAL ERROR: {str(e)}") 
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+# ======================================================
+# NEW ENDPOINT: GET TARGET HOSPITALS (Dynamic Filter)
+# ======================================================
+@router.get("/target-hospitals")
+async def get_target_hospitals(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Returns a list of all hospitals EXCEPT the current user's hospital.
+    Used for populating the 'Transfer To' dropdown.
+    """
+    # 1. Identify "My" Hospital (e.g., "Hospital A")
+    my_hospital = current_user.get("hospital")
+
+    # 2. Find all unique hospital names in the database
+    # This scans the 'users' collection to see which hospitals exist
+    all_hospitals = await db.users.distinct("hospital")
+
+    # 3. Filter the list: Keep everything that is NOT my_hospital
+    valid_targets = [
+        h for h in all_hospitals 
+        if h and h != my_hospital and h != "Unknown"
+    ]
+
+    print(f"🏥 User is at {my_hospital}. Available Targets: {valid_targets}")
+    return valid_targets

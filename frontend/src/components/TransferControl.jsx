@@ -6,7 +6,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const TransferControl = ({ recordId }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [target, setTarget] = useState("General Hospital C"); // Default target
+  const [target, setTarget] = useState("Hospital C"); // Default target
   const [error, setError] = useState("");
 
   const handleTransfer = async () => {
