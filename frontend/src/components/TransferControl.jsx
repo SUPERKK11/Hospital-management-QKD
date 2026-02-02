@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
@@ -6,11 +6,39 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const TransferControl = ({ recordId }) => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [target, setTarget] = useState("Hospital C"); // Default target
+  
+  // 👇 STATE FOR DYNAMIC HOSPITALS
+  const [hospitals, setHospitals] = useState([]); 
+  const [target, setTarget] = useState(""); 
   const [error, setError] = useState("");
+
+  // ✅ 1. FETCH TARGET HOSPITALS ON LOAD
+  useEffect(() => {
+    const fetchHospitals = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        const res = await axios.get(`${API_BASE_URL}/api/doctors/target-hospitals`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        setHospitals(res.data);
+        
+        // Auto-select the first available hospital if list is not empty
+        if (res.data.length > 0) {
+          setTarget(res.data[0]);
+        }
+      } catch (err) {
+        console.error("Failed to load hospitals", err);
+        setError("Could not load hospital list.");
+      }
+    };
+    
+    fetchHospitals();
+  }, []);
 
   const handleTransfer = async () => {
     if (!recordId) return alert("Error: Record ID missing.");
+    if (!target) return alert("Error: No target hospital selected.");
     
     setLoading(true);
     setResult(null);
@@ -19,7 +47,6 @@ const TransferControl = ({ recordId }) => {
     try {
       const token = localStorage.getItem('token');
       
-      // ✅ Matches your new Backend "TransferRequest" model
       const payload = { 
           record_id: recordId, 
           target_hospital_name: target 
@@ -49,25 +76,37 @@ const TransferControl = ({ recordId }) => {
       
       {!result ? (
         <div className="flex flex-wrap gap-2 items-center">
+          
+          {/* 👇 DYNAMIC DROPDOWN MENU */}
           <select 
             value={target} 
             onChange={(e) => setTarget(e.target.value)}
-            className="p-2 border rounded text-sm bg-white"
+            className="p-2 border rounded text-sm bg-white min-w-[150px]"
+            disabled={hospitals.length === 0}
           >
-            <option>Hospital A</option>
-            <option>Hospital B</option>
-            <option>Hospital C</option>
+            {hospitals.length === 0 ? (
+               <option>Loading hospitals...</option>
+            ) : (
+               hospitals.map((hosp, index) => (
+                 <option key={index} value={hosp}>
+                   To: {hosp}
+                 </option>
+               ))
+            )}
           </select>
           
           <button 
             onClick={handleTransfer} 
-            disabled={loading}
+            disabled={loading || hospitals.length === 0}
             className={`px-4 py-2 rounded text-white text-sm font-semibold transition ${
-              loading ? "bg-gray-400" : "bg-indigo-600 hover:bg-indigo-700"
+              loading || hospitals.length === 0 
+                ? "bg-gray-400 cursor-not-allowed" 
+                : "bg-indigo-600 hover:bg-indigo-700"
             }`}
           >
             {loading ? "Establishing QKD Link..." : "🚀 Initiate Transfer"}
           </button>
+          
           {error && <span className="text-red-500 text-xs block w-full">{error}</span>}
         </div>
       ) : (
