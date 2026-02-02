@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from bson import ObjectId
 from datetime import datetime
 import logging
@@ -28,7 +28,6 @@ class TransferRequest(BaseModel):
 async def execute_transfer(
     req: TransferRequest, 
     current_user: dict = Depends(get_current_user),
-    # ✅ FIX: Inject Database Connection Safely
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -47,7 +46,6 @@ async def execute_transfer(
         # --- 2. DECRYPT THE DATA (Unlock from Storage) ---
         storage_key = record.get("quantum_key")
         
-        # Handle cases where data might not be encrypted yet
         try:
             if storage_key:
                 plain_diagnosis = decrypt_data(record["diagnosis"], storage_key)
@@ -57,17 +55,17 @@ async def execute_transfer(
                 plain_prescription = record["prescription"]
         except Exception as e:
             logger.error(f"Decryption Error: {e}")
-            raise HTTPException(status_code=500, detail="Failed to decrypt source record. Data may be corrupted.")
+            raise HTTPException(status_code=500, detail="Failed to decrypt source record.")
 
-        # --- 3. PERFORM QKD HANDSHAKE (Generate Transmission Key) ---
+        # --- 3. PERFORM QKD HANDSHAKE ---
         qkd_session = simulate_qkd_exchange()
         transmission_key = qkd_session["final_key"]
 
-        # --- 4. ENCRYPT FOR TRANSMISSION (Lock for Travel) ---
+        # --- 4. ENCRYPT FOR TRANSMISSION ---
         secure_diagnosis = encrypt_data(plain_diagnosis, transmission_key)
         secure_prescription = encrypt_data(plain_prescription, transmission_key)
 
-        # --- 5. GENERATE THE PACKET (The Digital Envelope) ---
+        # --- 5. GENERATE THE PACKET ---
         transfer_packet = {
             "status": "success",
             "sender": current_user.get("hospital", "Unknown"), 
@@ -86,7 +84,7 @@ async def execute_transfer(
             }
         }
 
-        # --- 6. DYNAMIC TRANSFER (Save to the Correct Inbox) ---
+        # --- 6. DYNAMIC TRANSFER (Save to Inbox) ---
         safe_target_name = req.target_hospital_name.lower().strip().replace(" ", "_")
         target_collection_name = f"inbox_{safe_target_name}"
 
@@ -103,33 +101,30 @@ async def execute_transfer(
         await db[target_collection_name].insert_one(target_record)
 
         # --- 7. CREATE GOVERNMENT AUDIT LOG ---
-        new_audit_log = AuditLog(
-            sender_hospital=current_user.get("hospital", "Unknown"),
-            sender_doctor=current_user.get("username", "Unknown"),
-            receiver_hospital=req.target_hospital_name,
-            record_id=req.record_id,
-            qkd_key_id=f"KEY-{transmission_key[:8]}", 
-            status="SECURE (QKD Verified)"
-        )
+        # 🚨 FIX: Manually create dict to avoid Pydantic _id issues
+        audit_log_data = {
+            "sender_hospital": current_user.get("hospital", "Unknown"),
+            "sender_doctor": current_user.get("username", "Unknown"),
+            "receiver_hospital": req.target_hospital_name,
+            "record_id": req.record_id,
+            "qkd_key_id": f"KEY-{transmission_key[:8]}",
+            "status": "SECURE (QKD Verified)",
+            "timestamp": datetime.now()
+        }
         
-        # 👇👇👇 CRITICAL FIX FOR DUPLICATE KEY ERROR 👇👇👇
-        # Convert to dictionary and REMOVE '_id' if it is None.
-        # This tells MongoDB to generate a NEW unique ID automatically.
-        log_data = new_audit_log.dict(by_alias=True)
-        if "_id" in log_data and log_data["_id"] is None:
-            del log_data["_id"]
-            
-        await db["audit_logs"].insert_one(log_data)
-        # 👆👆👆 FIX END 👆👆👆
+        # Save directly as a dictionary (Safest method)
+        await db["audit_logs"].insert_one(audit_log_data)
 
         return transfer_packet
 
     except HTTPException as he:
-        raise he # Re-raise expected HTTP errors
+        raise he 
     except Exception as e:
-        # 👇 This captures the real 500 error in your terminal
         logger.error(f"❌ TRANSFER FAILED: {str(e)}")
         print(f"❌ CRITICAL TRANSFER ERROR: {str(e)}")
+        # If it's the duplicate key error, catch it specifically
+        if "E11000" in str(e):
+             raise HTTPException(status_code=500, detail="Database Error: Audit Log ID Collision. Please try again.")
         raise HTTPException(status_code=500, detail=f"Transfer failed: {str(e)}")
 
 
@@ -141,11 +136,8 @@ async def get_audit_logs(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database) 
 ):
-    """
-    Secured Endpoint: Only for 'government' role.
-    """
     if current_user.get("role") != "government":
-        raise HTTPException(status_code=403, detail="Access Denied: Government Clearance Required")
+        raise HTTPException(status_code=403, detail="Access Denied")
 
     cursor = db["audit_logs"].find().sort("timestamp", -1)
     logs = await cursor.to_list(length=50)
@@ -165,9 +157,6 @@ async def view_hospital_inbox(
     hospital_name: str,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """
-    Reads the encrypted messages from a specific hospital's inbox.
-    """
     safe_name = hospital_name.lower().strip().replace(" ", "_")
     collection_name = f"inbox_{safe_name}"
     
