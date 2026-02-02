@@ -9,7 +9,8 @@ from app.api.auth import router as auth_router
 from app.api.records import router as records_router 
 from app.api.transfer import router as transfer_router
 from app.api.abha import router as abha_router
-from app.api.ai import router as ai_router  # 👈 Now importing from the new file
+from app.api.ai import router as ai_router 
+from app.api.doctors import router as doctors_router # 👈 NEW IMPORT
 
 # --- Lifespan: Handles startup and shutdown ---
 @asynccontextmanager
@@ -51,6 +52,7 @@ app.include_router(records_router, prefix="/api/records", tags=["Medical Records
 app.include_router(transfer_router, prefix="/api/transfer", tags=["QKD Transfer"])
 app.include_router(abha_router, prefix="/api/abha", tags=["ABHA Integration"])
 app.include_router(ai_router, prefix="/api", tags=["AI Triage"]) 
+app.include_router(doctors_router, prefix="/api/doctors", tags=["Doctor Directory"]) # 👈 NEW ROUTE
 
 # --- Root Endpoint ---
 @app.get("/")
@@ -58,7 +60,7 @@ def read_root():
     return {
         "status": "System Online", 
         "database": settings.DB_NAME, 
-        "modules": ["Auth", "Records", "QKD Transfer", "ABHA", "AI"]
+        "modules": ["Auth", "Records", "QKD Transfer", "ABHA", "AI", "Doctors"]
     }
 
 if __name__ == "__main__":
