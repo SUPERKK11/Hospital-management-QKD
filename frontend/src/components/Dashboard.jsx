@@ -9,14 +9,14 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 function Dashboard() {
   const [userRole, setUserRole] = useState("");
   const [fullName, setFullName] = useState("");
-  const [records, setRecords] = useState([]); // Stores ALL data fetched
+  const [records, setRecords] = useState([]); 
   
   // Doctor: Create Record State
   const [patientEmail, setPatientEmail] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [prescription, setPrescription] = useState(""); 
 
-  // Doctor: Search State (NEW) 🔍
+  // Doctor: Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
 
@@ -70,7 +70,7 @@ function Dashboard() {
       setPatientEmail("");
       setDiagnosis("");
       setPrescription(""); 
-      fetchRecords(token); // Refresh local data
+      fetchRecords(token); 
 
     } catch (err) {
       console.error(err);
@@ -83,11 +83,12 @@ function Dashboard() {
     navigate("/");
   };
 
-  // --- LOGIC: FILTER RECORDS ---
-  // If Doctor: Only show records if they match the Search Query
-  // If Patient: Show all their records immediately
+  // --- LOGIC: SEARCH FILTER ---
   const displayedRecords = userRole === "doctor" 
-    ? records.filter(r => r.patient_email.toLowerCase() === searchQuery.toLowerCase())
+    ? records.filter(r => 
+        r.patient_email.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        (r.abha_id && r.abha_id.includes(searchQuery)) // Future-proof for ABHA
+      )
     : records;
 
   // --- GOVERNMENT VIEW ---
@@ -107,125 +108,136 @@ function Dashboard() {
 
   // --- STANDARD DASHBOARD ---
   return (
-    <div className="min-h-screen bg-gray-50 p-6 font-sans">
-      <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen bg-gray-100 p-6 font-sans flex flex-col items-center">
+      <div className="w-full max-w-5xl">
         
         {/* Header */}
-        <div className="flex justify-between items-center mb-8 bg-white p-4 rounded shadow-sm border-l-4 border-blue-500">
+        <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-600">
           <div>
             <h2 className="text-2xl font-bold text-gray-800">🏥 Hospital Dashboard</h2>
-            <p className="text-gray-500">Logged in as: <strong>{fullName}</strong> ({userRole})</p>
+            <p className="text-gray-500 text-sm">Logged in as: <strong>{fullName}</strong> ({userRole})</p>
           </div>
-          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition shadow">Logout</button>
+          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition shadow font-medium text-sm">Logout</button>
         </div>
 
-        {/* --- DOCTOR: CREATE RECORD --- */}
-        {userRole === "doctor" && (
-          <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200 mb-8">
-            <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">📝 Create New Record</h3>
-            <form onSubmit={handleCreateRecord} className="flex flex-col gap-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <input 
-                    type="email" 
-                    placeholder="Patient Email" 
-                    value={patientEmail} 
-                    onChange={(e) => setPatientEmail(e.target.value)} 
-                    required 
-                    className="p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-                <input 
-                    type="text" 
-                    placeholder="Diagnosis" 
-                    value={diagnosis} 
-                    onChange={(e) => setDiagnosis(e.target.value)} 
-                    required 
-                    className="p-3 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-              <textarea 
-                placeholder="Prescription / Treatment Plan" 
-                value={prescription} 
-                onChange={(e) => setPrescription(e.target.value)} 
-                required 
-                className="p-3 border rounded h-20 focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-              <button type="submit" className="bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 transition shadow-sm w-full md:w-auto md:px-8">
-                Save Record
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* --- RECORD SECTION --- */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xl font-bold text-gray-700">
-                {userRole === "doctor" ? "🔍 Patient History Lookup" : "📂 My Medical History"}
-            </h3>
-          </div>
-
-          {/* 🔍 DOCTOR SEARCH BAR */}
-          {userRole === "doctor" && (
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mb-6 flex gap-2 items-center">
-                <input 
-                    type="text" 
-                    placeholder="Enter Patient Email to view history..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 p-3 border rounded shadow-sm focus:outline-none focus:border-blue-500"
-                />
-                <button 
-                    onClick={() => setIsSearching(true)}
-                    className="bg-blue-600 text-white px-6 py-3 rounded shadow hover:bg-blue-700 font-semibold"
-                >
-                    Search Records
-                </button>
-            </div>
-          )}
-
-          {/* RESULTS DISPLAY */}
-          <div className="space-y-4">
-            {/* If Doctor hasn't searched yet */}
-            {userRole === "doctor" && searchQuery === "" && (
-                <div className="text-center py-10 text-gray-400 bg-gray-50 border border-dashed border-gray-300 rounded-lg">
-                    Enter a patient's email above to access their secured medical history.
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-180px)]">
+            
+            {/* LEFT COLUMN: ACTIONS (Create Record) */}
+            {userRole === "doctor" && (
+                <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 h-fit">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                        📝 <span className="underline decoration-green-400">New Diagnosis</span>
+                    </h3>
+                    <form onSubmit={handleCreateRecord} className="flex flex-col gap-4">
+                        <input 
+                            type="email" 
+                            placeholder="Patient Email" 
+                            value={patientEmail} 
+                            onChange={(e) => setPatientEmail(e.target.value)} 
+                            required 
+                            className="p-3 bg-gray-50 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-sm"
+                        />
+                        <input 
+                            type="text" 
+                            placeholder="Diagnosis" 
+                            value={diagnosis} 
+                            onChange={(e) => setDiagnosis(e.target.value)} 
+                            required 
+                            className="p-3 bg-gray-50 border rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-sm"
+                        />
+                        <textarea 
+                            placeholder="Prescription / Notes" 
+                            value={prescription} 
+                            onChange={(e) => setPrescription(e.target.value)} 
+                            required 
+                            className="p-3 bg-gray-50 border rounded-lg h-32 focus:ring-2 focus:ring-green-500 outline-none text-sm resize-none"
+                        />
+                        <button type="submit" className="bg-green-600 text-white py-2.5 rounded-lg font-bold hover:bg-green-700 transition shadow-sm">
+                            Save Record
+                        </button>
+                    </form>
                 </div>
             )}
 
-            {/* If searched but no results */}
-            {userRole === "doctor" && searchQuery !== "" && displayedRecords.length === 0 && (
-                <div className="text-center py-8 text-red-500">
-                    No records found for "{searchQuery}".
-                </div>
-            )}
+            {/* RIGHT COLUMN: HISTORY (Scrollable) */}
+            <div className={`flex flex-col ${userRole === "doctor" ? "lg:col-span-2" : "lg:col-span-3"} bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden`}>
+                
+                {/* Fixed Header for History Section */}
+                <div className="p-5 border-b border-gray-100 bg-white z-10">
+                    <h3 className="text-lg font-bold text-gray-800 mb-3">
+                        {userRole === "doctor" ? "🔍 Patient History Lookup" : "📂 My Medical History"}
+                    </h3>
 
-            {/* Display Logic */}
-            {(userRole === "patient" || (userRole === "doctor" && searchQuery !== "")) && (
-                displayedRecords.map((rec) => (
-                <div key={rec.id || rec._id} className="bg-white p-5 rounded-lg shadow border-l-4 border-indigo-500 hover:shadow-lg transition">
-                    <div className="flex justify-between items-start">
-                        <div>
-                            <h4 className="font-bold text-lg text-indigo-900">{rec.diagnosis}</h4>
-                            <p className="text-gray-700 mt-1"><strong>Rx:</strong> {rec.prescription}</p>
-                        </div>
-                        <span className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full uppercase font-bold tracking-wide">
-                            {rec.hospital || "Secured"}
-                        </span>
-                    </div>
-                    
-                    <div className="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-500 flex justify-between items-center">
-                        <span>Patient: {rec.patient_email}</span>
-                        <span>{new Date(rec.created_at).toLocaleDateString()}</span>
-                    </div>
-
-                    {/* Transfer Controls (Only for Doctor) */}
+                    {/* Search Bar (Doctor Only) */}
                     {userRole === "doctor" && (
-                        <TransferControl recordId={rec.id || rec._id} />
+                        <div className="flex gap-2">
+                            <input 
+                                type="text" 
+                                placeholder="Enter Patient Email or ABHA ID..." 
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="flex-1 p-2.5 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 text-sm"
+                            />
+                            <button 
+                                onClick={() => setIsSearching(true)}
+                                className="bg-blue-600 text-white px-5 py-2 rounded-lg hover:bg-blue-700 font-semibold text-sm transition"
+                            >
+                                Search
+                            </button>
+                        </div>
                     )}
                 </div>
-                ))
-            )}
-          </div>
+
+                {/* SCROLLABLE CONTENT AREA (The "Chat Box" Effect) */}
+                <div className="flex-1 overflow-y-auto p-5 bg-gray-50 space-y-4 h-[500px] scroll-smooth">
+                    
+                    {/* Empty State */}
+                    {userRole === "doctor" && searchQuery === "" && (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-400">
+                            <span className="text-4xl mb-2">🔍</span>
+                            <p>Search for a patient to view their records.</p>
+                        </div>
+                    )}
+
+                    {/* No Results */}
+                    {userRole === "doctor" && searchQuery !== "" && displayedRecords.length === 0 && (
+                        <div className="flex flex-col items-center justify-center h-full text-red-400">
+                            <span className="text-4xl mb-2">🚫</span>
+                            <p>No records found for "{searchQuery}"</p>
+                        </div>
+                    )}
+
+                    {/* Records List */}
+                    {(userRole === "patient" || (userRole === "doctor" && searchQuery !== "")) && (
+                        displayedRecords.map((rec) => (
+                        <div key={rec.id || rec._id} className="bg-white p-4 rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition">
+                            <div className="flex justify-between items-start mb-2">
+                                <h4 className="font-bold text-indigo-900">{rec.diagnosis}</h4>
+                                <span className="bg-indigo-50 text-indigo-700 text-[10px] px-2 py-1 rounded-full uppercase font-bold tracking-wider border border-indigo-100">
+                                    {rec.hospital || "Secured"}
+                                </span>
+                            </div>
+                            
+                            <p className="text-gray-700 text-sm mb-3 bg-gray-50 p-2 rounded">
+                                <strong>Rx:</strong> {rec.prescription}
+                            </p>
+
+                            <div className="flex justify-between items-center text-xs text-gray-400 border-t border-gray-100 pt-2">
+                                <span>Patient: {rec.patient_email}</span>
+                                <span>{new Date(rec.created_at).toLocaleDateString()}</span>
+                            </div>
+
+                            {/* Transfer Control - Shows nicely at bottom of card */}
+                            {userRole === "doctor" && (
+                                <div className="mt-3">
+                                    <TransferControl recordId={rec.id || rec._id} />
+                                </div>
+                            )}
+                        </div>
+                        ))
+                    )}
+                </div>
+            </div>
         </div>
       </div>
     </div>
