@@ -28,7 +28,7 @@ const TransferControl = ({ recordId }) => {
       // 2. Prepare Payload (MUST match Backend Pydantic Model)
       const payload = { 
           record_id: recordId, 
-          recipient_hospital_id: target // <--- FIXED: Matches backend
+          target_hospital_name: target // <--- FIXED: Matches backend
       };
 
       console.log("🚀 Sending Transfer Request:", payload);
@@ -67,9 +67,9 @@ const TransferControl = ({ recordId }) => {
             className="p-2 border rounded text-sm bg-white"
           >
             {/* Values must match valid Hospital IDs in your logic */}
-            <option value="hospitalA">Hospital A (City)</option>
-            <option value="hospitalB">Hospital B (West)</option>
-            <option value="researchC">Research Lab C</option>
+            <option value="hospitalA">Hospital A </option>
+            <option value="hospitalB">Hospital B </option>
+            <option value="researchC">Hospital C</option>
           </select>
           
           <button 
