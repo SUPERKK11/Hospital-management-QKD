@@ -1,3 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 :root {
   --primary-color: #0056b3; /* Hospital Blue */
   --secondary-color: #f0f8ff; /* Light Alice Blue */
