@@ -54,9 +54,9 @@ const TransferControl = ({ recordId }) => {
             onChange={(e) => setTarget(e.target.value)}
             className="p-2 border rounded text-sm bg-white"
           >
-            <option>City Hospital B</option>
-            <option>General Hospital C</option>
-            <option>Research Institute D</option>
+            <option>Hospital A</option>
+            <option>Hospital B</option>
+            <option>Hospital C</option>
           </select>
           
           <button 

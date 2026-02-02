@@ -28,7 +28,7 @@ class TransferRequest(BaseModel):
 async def execute_transfer(
     req: TransferRequest, 
     current_user: dict = Depends(get_current_user),
-    # 👇 FIX: Inject Database Connection Safely
+    # ✅ FIX: Inject Database Connection Safely
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
@@ -112,7 +112,15 @@ async def execute_transfer(
             status="SECURE (QKD Verified)"
         )
         
-        await db["audit_logs"].insert_one(new_audit_log.dict(by_alias=True))
+        # 👇👇👇 CRITICAL FIX FOR DUPLICATE KEY ERROR 👇👇👇
+        # Convert to dictionary and REMOVE '_id' if it is None.
+        # This tells MongoDB to generate a NEW unique ID automatically.
+        log_data = new_audit_log.dict(by_alias=True)
+        if "_id" in log_data and log_data["_id"] is None:
+            del log_data["_id"]
+            
+        await db["audit_logs"].insert_one(log_data)
+        # 👆👆👆 FIX END 👆👆👆
 
         return transfer_packet
 
@@ -131,7 +139,7 @@ async def execute_transfer(
 @router.get("/audit-logs")
 async def get_audit_logs(
     current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_database) # 👈 FIXED
+    db: AsyncIOMotorDatabase = Depends(get_database) 
 ):
     """
     Secured Endpoint: Only for 'government' role.
@@ -155,7 +163,7 @@ async def get_audit_logs(
 @router.get("/inbox/{hospital_name}")
 async def view_hospital_inbox(
     hospital_name: str,
-    db: AsyncIOMotorDatabase = Depends(get_database) # 👈 FIXED
+    db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     """
     Reads the encrypted messages from a specific hospital's inbox.
