@@ -53,7 +53,7 @@ const TransferControl = ({ recordId }) => {
       };
 
       const response = await axios.post(
-        `${API_BASE_URL}/api/transfer/execute`, 
+        `${API_BASE_URL}/api/transfer/execute-batch`, 
         payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
