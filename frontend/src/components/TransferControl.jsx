@@ -37,36 +37,39 @@ const TransferControl = ({ recordId }) => {
   }, []);
 
   const handleTransfer = async () => {
-    if (!recordId) return alert("Error: Record ID missing.");
-    if (!target) return alert("Error: No target hospital selected.");
-    
-    setLoading(true);
-    setResult(null);
-    setError("");
-
-    try {
-      const token = localStorage.getItem('token');
+      if (!recordId) return alert("Error: Record ID missing.");
+      if (!target) return alert("Error: No target hospital selected.");
       
-      const payload = { 
-          record_id: recordId, 
-          target_hospital_name: target 
-      };
+      setLoading(true);
+      setResult(null);
+      setError("");
 
-      const response = await axios.post(
-        `${API_BASE_URL}/api/transfer/execute-batch`, 
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      try {
+        const token = localStorage.getItem('token');
+        
+        // ✅ FIX: Wrap recordId in an array and use the key "record_ids"
+        const payload = { 
+            record_ids: [recordId], 
+            target_hospital_name: target 
+        };
 
-      setResult(response.data);
+        const response = await axios.post(
+          `${API_BASE_URL}/api/transfer/execute-batch`, 
+          payload,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
 
-    } catch (err) {
-      console.error("Transfer Error:", err);
-      setError("Transfer Failed: " + (err.response?.data?.detail || "Server Error"));
-    } finally {
-      setLoading(false);
-    }
-  };
+        setResult(response.data);
+
+      } catch (err) {
+        console.error("Transfer Error:", err);
+        // Detailed error reporting to help you debug
+        const errorMsg = err.response?.data?.detail?.[0]?.msg || "Server Error";
+        setError("Transfer Failed: " + errorMsg);
+      } finally {
+        setLoading(false);
+      }
+    };
 
   return (
     <div className="mt-4 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
