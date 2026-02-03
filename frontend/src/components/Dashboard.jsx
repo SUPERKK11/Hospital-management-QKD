@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import TransferControl from '../components/TransferControl';
 import GovernmentView from '../components/GovernmentView';
 import BulkPatientList from '../components/BulkPatientList';
-import Inbox from '../components/Inbox';
+// import Inbox from '../components/Inbox';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
