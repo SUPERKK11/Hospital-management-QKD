@@ -7,18 +7,16 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 const Inbox = () => {
   const [incomingRecords, setIncomingRecords] = useState([]);
   const [loading, setLoading] = useState(false);
-  // Track which specific record is being accepted to show a spinner on that button
   const [processingId, setProcessingId] = useState(null);
 
   useEffect(() => {
     fetchInbox();
-    // Refresh inbox every 15 seconds to catch new transfers
-    const interval = setInterval(fetchInbox, 15000);
+    const interval = setInterval(fetchInbox, 15000); // Poll every 15s
     return () => clearInterval(interval);
   }, []);
 
   const fetchInbox = async () => {
-    // Only set global loading on initial fetch, not background refreshes
+    // Only show loading spinner on first load
     if (incomingRecords.length === 0) setLoading(true);
     try {
       const token = localStorage.getItem('token');
@@ -38,23 +36,22 @@ const Inbox = () => {
     try {
       const token = localStorage.getItem('token');
       
-      // 1. Call the backend to move data from Inbox -> Records
+      // 1. Call Backend to Decrypt & Accept
       await axios.post(`${API_BASE_URL}/api/transfer/accept`, 
         { inbox_id: id }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // 2. Remove from UI immediately (Optimistic UI update)
+      // 2. Optimistic UI Update (Remove from list)
       setIncomingRecords(prev => prev.filter(r => (r._id || r.id) !== id));
       
-      // 3. Success Message
-      alert("✅ Patient Record Accepted! It is now in your main history.");
+      alert("✅ Transfer Accepted! Record decrypted and moved to Dashboard.");
       
-      // 4. Force refresh to update the main dashboard list
+      // 3. Refresh Page to show it in the main list
       window.location.reload(); 
 
     } catch (err) {
-      alert("❌ Failed to accept record. Please try again.");
+      alert("❌ Failed to accept. Check console for details.");
       console.error(err);
     } finally {
       setProcessingId(null);
@@ -98,17 +95,19 @@ const Inbox = () => {
                 <div className="flex justify-between items-start mb-2">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded border border-green-200">
-                        SECURE QKD
+                      {/* Changed label to reflect reality: It is LOCKED until accepted */}
+                      <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-200">
+                        🔒 ENCRYPTED
                       </span>
                       <span className="text-[10px] text-gray-400">
                         {new Date(rec.created_at || rec.received_at).toLocaleDateString()}
                       </span>
                     </div>
-                    <h4 className="font-bold text-gray-800 text-sm">{rec.diagnosis || "Encrypted Record"}</h4>
+                    {/* Diagnosis is hidden/encrypted here */}
+                    <h4 className="font-bold text-gray-800 text-sm">HIDDEN CONTENT</h4>
                   </div>
                   
-                  {/* 👇 THIS IS THE BUTTON YOU WERE MISSING 👇 */}
+                  {/* 👇 THE MISSING ACCEPT BUTTON 👇 */}
                   <button 
                     onClick={() => handleAccept(recId)}
                     disabled={processingId === recId}
@@ -116,29 +115,26 @@ const Inbox = () => {
                   >
                     {processingId === recId ? (
                       <>
-                        <Loader size={12} className="animate-spin"/> Processing...
+                        <Loader size={12} className="animate-spin"/> Decrypting...
                       </>
                     ) : (
                       <>
-                        <Download size={14} /> Accept Record
+                        <Download size={14} /> Accept & Decrypt
                       </>
                     )}
                   </button>
-                  {/* 👆 --------------------------------- 👆 */}
                 </div>
 
                 <div className="bg-gray-50 p-2.5 rounded border border-gray-100 mb-2">
-                  <p className="text-xs text-gray-600 line-clamp-2 italic">
-                    {rec.prescription || "No preview available..."}
+                  <p className="text-xs text-gray-500 line-clamp-2 break-all font-mono">
+                    {/* Show a preview of the encrypted garbage text so user knows it's secure */}
+                    {rec.prescription || rec.encrypted_diagnosis?.substring(0, 50) + "..."}
                   </p>
                 </div>
 
                 <div className="flex justify-between items-center text-[11px] text-gray-500">
                   <span className="flex items-center gap-1">
                     From: <span className="font-bold text-indigo-600">{rec.sender || rec.hospital || "Unknown Network"}</span>
-                  </span>
-                  <span className="text-gray-400 flex items-center gap-1">
-                     ID: {rec.patient_email || "Hidden"}
                   </span>
                 </div>
               </div>
@@ -147,7 +143,7 @@ const Inbox = () => {
         )}
       </div>
       
-      {/* Footer Status */}
+      {/* Footer */}
       <div className="bg-gray-50 p-2 text-center border-t border-gray-100">
         <p className="text-[9px] text-gray-400 uppercase tracking-widest font-bold flex justify-center items-center gap-1">
           <AlertCircle size={10} /> Quantum-Safe Tunnel Active
