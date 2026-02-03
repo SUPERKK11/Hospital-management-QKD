@@ -1,50 +1,39 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from typing import List
 from bson import ObjectId
 from datetime import datetime
 import logging
-import hashlib  # 👈 Added for Data Fingerprinting
+import hashlib
 
 # Database & Auth
 from app.db.mongodb import get_database
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.api.auth import get_current_user
-
-# Encryption & QKD Tools
-from app.utils.quantum import simulate_qkd_exchange
-from app.utils.encryption import encrypt_data, decrypt_data
+from app.utils.encryption import encrypt_data, decrypt_data # Ensure this is imported
+from app.utils.quantum import simulate_qkd_exchange # Ensure this is imported
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Input Model
+# Input Model for Batch Transfer
 class BatchTransferRequest(BaseModel):
     record_ids: List[str]
     target_hospital_name: str
 
+# --- 1. EXECUTE BATCH (SENDER) ---
 @router.post("/execute-batch")
 async def execute_batch_transfer(
     req: BatchTransferRequest, 
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """
-    Transfers records ONLY if the data content is new.
-    Allows re-transferring the same patient if their diagnosis has changed.
-    """
-    summary = {
-        "success": [],
-        "skipped": [],
-        "failed": []
-    }
-
+    summary = { "success": [], "skipped": [], "failed": [] }
     safe_target_name = req.target_hospital_name.lower().strip().replace(" ", "_")
     target_collection_name = f"inbox_{safe_target_name}"
 
     for rid in req.record_ids:
         try:
-            # --- 1. FETCH SOURCE FIRST (To check content) ---
             if not ObjectId.is_valid(rid):
                 summary["failed"].append({"id": rid, "reason": "Invalid ID"})
                 continue
@@ -54,165 +43,140 @@ async def execute_batch_transfer(
                 summary["failed"].append({"id": rid, "reason": "Not Found"})
                 continue
 
-            # --- 2. DECRYPT SOURCE DATA ---
+            # Decrypt source data to re-encrypt for target
             storage_key = record.get("quantum_key")
-            # We need the plain text to generate the signature
-            try:
-                if storage_key:
+            plain_diagnosis = record["diagnosis"] # Default fallback
+            if storage_key:
+                try:
                     plain_diagnosis = decrypt_data(record["diagnosis"], storage_key)
-                else:
-                    plain_diagnosis = record["diagnosis"]
-            except:
-                summary["failed"].append({"id": rid, "reason": "Decryption Error"})
-                continue
+                except:
+                    pass # Keep as is if decryption fails
 
-            # --- 3. GENERATE DATA FINGERPRINT (HASH) ---
-            # We create a unique signature based on the Patient ID + Current Diagnosis.
-            # If the diagnosis changes, this signature changes.
+            # Generate Signature
             raw_data_string = f"{record.get('patient_id')}-{plain_diagnosis}"
             data_signature = hashlib.sha256(raw_data_string.encode()).hexdigest()
 
-            # --- 4. SMART DUPLICATE CHECK ---
-            # We check if this specific VERSION of the data exists in the inbox.
-            existing_transfer = await db[target_collection_name].find_one({
-                "original_record_id": rid,
-                "data_signature": data_signature  # 👈 Check against the signature
+            # Check Duplicates in Target Inbox
+            existing = await db[target_collection_name].find_one({
+                "original_record_id": rid, "data_signature": data_signature
             })
-
-            if existing_transfer:
-                summary["skipped"].append(rid) # Skip ONLY if exact data match
+            if existing:
+                summary["skipped"].append(rid)
                 continue 
 
-            # --- 5. QKD & ENCRYPT ---
-            # If we get here, the data is new (or updated)
+            # QKD Simulation
             qkd_session = simulate_qkd_exchange()
             transmission_key = qkd_session["final_key"]
             secure_diagnosis = encrypt_data(plain_diagnosis, transmission_key)
 
-            # --- 6. SAVE TO TARGET INBOX ---
+            # Create Packet
             transfer_packet = {
                 "original_record_id": rid,
                 "received_from": current_user.get("hospital", "Unknown"),
+                "sender_hospital": current_user.get("hospital", "Unknown"), # Explicit sender field
                 "target_hospital": req.target_hospital_name, 
                 "patient_id": record.get("patient_id"),
+                "patient_email": record.get("patient_email"), # Pass identity info
+                "patient_abha": record.get("patient_abha"),   # Pass identity info
                 "encrypted_diagnosis": secure_diagnosis,
+                "prescription": record.get("prescription"),   # Pass prescription
                 "decryption_key": transmission_key,
-                "data_signature": data_signature, # 👈 Store signature for future checks
+                "data_signature": data_signature,
                 "received_at": datetime.now(),
                 "status": "LOCKED"
             }
             await db[target_collection_name].insert_one(transfer_packet)
 
-            # --- 7. AUDIT LOG ---
-            audit_log = {
+            # Audit Log
+            await db["audit_logs"].insert_one({
                 "sender_hospital": current_user.get("hospital", "Unknown"),
                 "receiver_hospital": req.target_hospital_name,
                 "record_id": rid,
                 "status": "SECURE TRANSFER",
                 "timestamp": datetime.now()
-            }
-            await db["audit_logs"].insert_one(audit_log)
-
+            })
             summary["success"].append(rid)
 
         except Exception as e:
-            logger.error(f"Error processing {rid}: {e}")
             summary["failed"].append({"id": rid, "reason": str(e)})
 
     return summary
 
-# ==========================================
-# 🆕 MY INBOX ENDPOINT (FIXES DASHBOARD)
-# ==========================================
+# --- 2. GET INBOX (VIEWER) ---
 @router.get("/my-inbox")
 async def get_my_hospital_inbox(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """
-    Fetches records sitting in the logged-in doctor's hospital inbox.
-    """
-    # 1. Identify the Hospital from the User Token
     my_hospital = current_user.get("hospital")
-    if not my_hospital:
-        # If user has no hospital (e.g. government/patient), return empty
-        return []
+    if not my_hospital: return []
 
-    # 2. Determine Collection Name (e.g., "inbox_hospital_b")
     safe_name = my_hospital.lower().strip().replace(" ", "_")
     collection_name = f"inbox_{safe_name}"
 
-    # 3. Fetch Records (Sort by newest first)
     inbox_records = await db[collection_name].find().sort("received_at", -1).limit(50).to_list(50)
 
-    # 4. Format for Frontend
     formatted_records = []
     for rec in inbox_records:
         rec["id"] = str(rec["_id"])
         del rec["_id"]
-        
-        # UI Helpers: Ensure we have a displayable sender name
         rec["sender"] = rec.get("received_from", "Unknown")
-        # Provide a snippet for preview
         rec["diagnosis"] = "🔒 Encrypted Content" 
         rec["prescription"] = str(rec.get("encrypted_diagnosis", ""))[:40] + "..."
-            
         formatted_records.append(rec)
 
     return formatted_records
 
-# ==========================================
-# PUBLIC INBOX ENDPOINT (For Debug/Admin)
-# ==========================================
-@router.get("/inbox/{hospital_name}")
-async def view_hospital_inbox(
-    hospital_name: str,
-    db: AsyncIOMotorDatabase = Depends(get_database)
-):
-    safe_name = hospital_name.lower().strip().replace(" ", "_")
-    # Sort by time so newest updates appear at the top
-    cursor = db[f"inbox_{safe_name}"].find().sort("received_at", -1)
-    messages = await cursor.to_list(length=50)
-    
-    for msg in messages:
-        msg["id"] = str(msg["_id"])
-        del msg["_id"]
-        msg["encrypted_preview"] = str(msg.get("encrypted_diagnosis", ""))[:40] + "..."
-        
-    return messages
-
-# ==========================================
-# DECRYPT ENDPOINT
-# ==========================================
-class DecryptRequest(BaseModel):
+# --- 3. ACCEPT TRANSFER (THE FIX) ---
+class AcceptRequest(BaseModel):
     inbox_id: str
 
-@router.post("/decrypt-record")
-async def decrypt_inbox_record(
-    req: DecryptRequest,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_database)
-):
-    my_hospital = current_user.get("hospital")
-    safe_name = my_hospital.lower().strip().replace(" ", "_")
-    collection_name = f"inbox_{safe_name}"
+@router.post("/accept")
+async def accept_transfer(req: AcceptRequest, current_user: dict = Depends(get_current_user), db=Depends(get_database)):
+    
+    # Identify the Inbox
+    hospital = current_user.get("hospital")
+    safe_name = hospital.lower().strip().replace(" ", "_")
+    inbox_collection = f"inbox_{safe_name}"
 
     if not ObjectId.is_valid(req.inbox_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
-        
-    record = await db[collection_name].find_one({"_id": ObjectId(req.inbox_id)})
-    if not record:
-        raise HTTPException(status_code=404, detail="Message not found")
+    
+    record_in_inbox = await db[inbox_collection].find_one({"_id": ObjectId(req.inbox_id)})
+    
+    if not record_in_inbox:
+        raise HTTPException(status_code=404, detail="Record not found in Inbox")
 
+    # Decrypt the data using the transmission key (Simulating 'Unlocking')
     try:
-        key = record.get("decryption_key")
-        encrypted_text = record.get("encrypted_diagnosis")
-        plaintext = decrypt_data(encrypted_text, key)
+        key = record_in_inbox.get("decryption_key")
+        encrypted_text = record_in_inbox.get("encrypted_diagnosis")
+        decrypted_diagnosis = decrypt_data(encrypted_text, key)
+    except:
+        decrypted_diagnosis = "Decryption Error - Manual Review Needed"
+
+    # Create NEW record in the main 'records' collection
+    # ⚠️ CRITICAL: We assign YOU (current_user) as the new doctor so it shows in your dashboard
+    new_record = {
+        "doctor_id": str(current_user["_id"]),  
+        "doctor_name": current_user["full_name"],
+        "hospital": current_user["hospital"],
         
-        await db[collection_name].update_one(
-            {"_id": ObjectId(req.inbox_id)},
-            {"$set": {"status": "UNLOCKED"}}
-        )
-        return {"status": "success", "decrypted_diagnosis": plaintext}
-    except Exception:
-        raise HTTPException(status_code=500, detail="Decryption failed")
+        # Copied Data
+        "patient_email": record_in_inbox.get("patient_email"),
+        "patient_abha": record_in_inbox.get("patient_abha"),
+        "patient_id": record_in_inbox.get("patient_id"),
+        "diagnosis": decrypted_diagnosis,     
+        "prescription": record_in_inbox.get("prescription"), 
+        
+        "created_at": datetime.now(),
+        "transferred_from": record_in_inbox.get("sender_hospital"),
+        "is_transferred": True
+    }
+
+    await db["records"].insert_one(new_record)
+
+    # Remove from Inbox (Cleanup)
+    await db[inbox_collection].delete_one({"_id": ObjectId(req.inbox_id)})
+
+    return {"status": "success", "message": "Patient accepted into your database"}
