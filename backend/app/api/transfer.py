@@ -10,18 +10,31 @@ import hashlib
 from app.db.mongodb import get_database
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from app.api.auth import get_current_user
-from app.utils.encryption import encrypt_data, decrypt_data # Ensure this is imported
-from app.utils.quantum import simulate_qkd_exchange # Ensure this is imported
+
+# Encryption & QKD Tools
+# Ensure these utility files exist in your app/utils folder!
+from app.utils.encryption import encrypt_data, decrypt_data 
+from app.utils.quantum import simulate_qkd_exchange 
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Input Model for Batch Transfer
+# Input Models
 class BatchTransferRequest(BaseModel):
     record_ids: List[str]
     target_hospital_name: str
 
-# --- 1. EXECUTE BATCH (SENDER) ---
+class AcceptRequest(BaseModel):
+    inbox_id: str
+
+# Helper to safely get hospital name
+def get_hospital_name(user: dict) -> str:
+    # Tries 'hospital_name' first, then 'hospital', then defaults to Unknown
+    return user.get("hospital_name", user.get("hospital", "Unknown"))
+
+# ==========================================
+# 1. SEND TRANSFER (Doctor A -> Doctor B)
+# ==========================================
 @router.post("/execute-batch")
 async def execute_batch_transfer(
     req: BatchTransferRequest, 
@@ -29,8 +42,12 @@ async def execute_batch_transfer(
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
     summary = { "success": [], "skipped": [], "failed": [] }
+    
+    # 1. Setup Target Collection
     safe_target_name = req.target_hospital_name.lower().strip().replace(" ", "_")
     target_collection_name = f"inbox_{safe_target_name}"
+    
+    sender_name = get_hospital_name(current_user)
 
     for rid in req.record_ids:
         try:
@@ -38,25 +55,26 @@ async def execute_batch_transfer(
                 summary["failed"].append({"id": rid, "reason": "Invalid ID"})
                 continue
 
+            # 2. Fetch Source Record
             record = await db["records"].find_one({"_id": ObjectId(rid)})
             if not record:
                 summary["failed"].append({"id": rid, "reason": "Not Found"})
                 continue
 
-            # Decrypt source data to re-encrypt for target
+            # 3. Decrypt Source (if it was encrypted) to prepare for QKD
             storage_key = record.get("quantum_key")
-            plain_diagnosis = record["diagnosis"] # Default fallback
+            plain_diagnosis = record["diagnosis"]
             if storage_key:
                 try:
                     plain_diagnosis = decrypt_data(record["diagnosis"], storage_key)
-                except:
-                    pass # Keep as is if decryption fails
+                except Exception:
+                    pass # Fallback to existing value if decryption fails
 
-            # Generate Signature
+            # 4. Generate Signature (Prevents Duplicates)
             raw_data_string = f"{record.get('patient_id')}-{plain_diagnosis}"
             data_signature = hashlib.sha256(raw_data_string.encode()).hexdigest()
 
-            # Check Duplicates in Target Inbox
+            # 5. Check if already sent
             existing = await db[target_collection_name].find_one({
                 "original_record_id": rid, "data_signature": data_signature
             })
@@ -64,32 +82,32 @@ async def execute_batch_transfer(
                 summary["skipped"].append(rid)
                 continue 
 
-            # QKD Simulation
+            # 6. QKD ENCRYPTION
             qkd_session = simulate_qkd_exchange()
             transmission_key = qkd_session["final_key"]
             secure_diagnosis = encrypt_data(plain_diagnosis, transmission_key)
 
-            # Create Packet
+            # 7. Send to Target Inbox
             transfer_packet = {
                 "original_record_id": rid,
-                "received_from": current_user.get("hospital", "Unknown"),
-                "sender_hospital": current_user.get("hospital", "Unknown"), # Explicit sender field
+                "sender_hospital": sender_name,
+                "received_from": sender_name,
                 "target_hospital": req.target_hospital_name, 
                 "patient_id": record.get("patient_id"),
-                "patient_email": record.get("patient_email"), # Pass identity info
-                "patient_abha": record.get("patient_abha"),   # Pass identity info
-                "encrypted_diagnosis": secure_diagnosis,
-                "prescription": record.get("prescription"),   # Pass prescription
-                "decryption_key": transmission_key,
+                "patient_email": record.get("patient_email"),
+                "patient_abha": record.get("patient_abha"),
+                "encrypted_diagnosis": secure_diagnosis, # Encrypted!
+                "prescription": record.get("prescription"),
+                "decryption_key": transmission_key,      # Key for receiver
                 "data_signature": data_signature,
                 "received_at": datetime.now(),
                 "status": "LOCKED"
             }
             await db[target_collection_name].insert_one(transfer_packet)
 
-            # Audit Log
+            # 8. Audit Log
             await db["audit_logs"].insert_one({
-                "sender_hospital": current_user.get("hospital", "Unknown"),
+                "sender_hospital": sender_name,
                 "receiver_hospital": req.target_hospital_name,
                 "record_id": rid,
                 "status": "SECURE TRANSFER",
@@ -98,18 +116,21 @@ async def execute_batch_transfer(
             summary["success"].append(rid)
 
         except Exception as e:
+            logger.error(f"Error processing {rid}: {e}")
             summary["failed"].append({"id": rid, "reason": str(e)})
 
     return summary
 
-# --- 2. GET INBOX (VIEWER) ---
+# ==========================================
+# 2. VIEW INBOX (Doctor B Views Encrypted Data)
+# ==========================================
 @router.get("/my-inbox")
 async def get_my_hospital_inbox(
     current_user: dict = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    my_hospital = current_user.get("hospital")
-    if not my_hospital: return []
+    my_hospital = get_hospital_name(current_user)
+    if my_hospital == "Unknown": return []
 
     safe_name = my_hospital.lower().strip().replace(" ", "_")
     collection_name = f"inbox_{safe_name}"
@@ -121,46 +142,52 @@ async def get_my_hospital_inbox(
         rec["id"] = str(rec["_id"])
         del rec["_id"]
         rec["sender"] = rec.get("received_from", "Unknown")
+        # 🔒 MASK THE DATA IN THE INBOX
         rec["diagnosis"] = "🔒 Encrypted Content" 
         rec["prescription"] = str(rec.get("encrypted_diagnosis", ""))[:40] + "..."
         formatted_records.append(rec)
 
     return formatted_records
 
-# --- 3. ACCEPT TRANSFER (THE FIX) ---
-class AcceptRequest(BaseModel):
-    inbox_id: str
-
+# ==========================================
+# 3. ACCEPT TRANSFER (Doctor B Decrypts & Claims)
+# ==========================================
 @router.post("/accept")
-async def accept_transfer(req: AcceptRequest, current_user: dict = Depends(get_current_user), db=Depends(get_database)):
-    
-    # Identify the Inbox
-    hospital = current_user.get("hospital")
-    safe_name = hospital.lower().strip().replace(" ", "_")
+async def accept_transfer(
+    req: AcceptRequest, 
+    current_user: dict = Depends(get_current_user), 
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    # 1. Identify Inbox
+    my_hospital = get_hospital_name(current_user)
+    safe_name = my_hospital.lower().strip().replace(" ", "_")
     inbox_collection = f"inbox_{safe_name}"
 
     if not ObjectId.is_valid(req.inbox_id):
         raise HTTPException(status_code=400, detail="Invalid ID")
     
+    # 2. Find Record
     record_in_inbox = await db[inbox_collection].find_one({"_id": ObjectId(req.inbox_id)})
-    
     if not record_in_inbox:
         raise HTTPException(status_code=404, detail="Record not found in Inbox")
 
-    # Decrypt the data using the transmission key (Simulating 'Unlocking')
+    # 3. DECRYPT (Simulate Key Usage)
     try:
         key = record_in_inbox.get("decryption_key")
         encrypted_text = record_in_inbox.get("encrypted_diagnosis")
+        
+        # Calls your utils/encryption.py
         decrypted_diagnosis = decrypt_data(encrypted_text, key)
-    except:
+    except Exception as e:
+        print(f"Decryption failed: {e}")
         decrypted_diagnosis = "Decryption Error - Manual Review Needed"
 
-    # Create NEW record in the main 'records' collection
-    # ⚠️ CRITICAL: We assign YOU (current_user) as the new doctor so it shows in your dashboard
+    # 4. Create NEW record in Main History
+    # ⚠️ We assign YOU (current_user) as the doctor so it shows in your dashboard
     new_record = {
         "doctor_id": str(current_user["_id"]),  
         "doctor_name": current_user["full_name"],
-        "hospital": current_user["hospital"],
+        "hospital": my_hospital,
         
         # Copied Data
         "patient_email": record_in_inbox.get("patient_email"),
@@ -176,7 +203,7 @@ async def accept_transfer(req: AcceptRequest, current_user: dict = Depends(get_c
 
     await db["records"].insert_one(new_record)
 
-    # Remove from Inbox (Cleanup)
+    # 5. Cleanup Inbox
     await db[inbox_collection].delete_one({"_id": ObjectId(req.inbox_id)})
 
     return {"status": "success", "message": "Patient accepted into your database"}
