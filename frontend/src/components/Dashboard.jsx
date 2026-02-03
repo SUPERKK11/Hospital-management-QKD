@@ -1,10 +1,12 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
-// We will still keep TransferControl for individual actions, 
-// but add a batch handler here.
+
+// Components
 import TransferControl from '../components/TransferControl';
 import GovernmentView from '../components/GovernmentView';
+import BulkPatientList from '../components/BulkPatientList';
+import Inbox from '../components/Inbox';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
@@ -14,36 +16,58 @@ function Dashboard() {
   const [allRecords, setAllRecords] = useState([]); 
   const [displayedRecords, setDisplayedRecords] = useState([]); 
   
-  // --- 🆕 BATCH SELECTION STATE ---
-  const [selectedRecordIds, setSelectedRecordIds] = useState([]);
-  const [isBatchLoading, setIsBatchLoading] = useState(false);
-  const [batchTargetHospital, setBatchTargetHospital] = useState("Hospital B");
-  const [batchResult, setBatchResult] = useState(null);
-
+  // Doctor Form Inputs
   const [patientEmail, setPatientEmail] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [prescription, setPrescription] = useState(""); 
+
+  // Search State
   const [searchQuery, setSearchQuery] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
-  const [hospitals, setHospitals] = useState(["Hospital A", "Hospital B", "Hospital C"]); 
-  const [selectedHospital, setSelectedHospital] = useState("");
-  const [doctorsList, setDoctorsList] = useState([]);
-  const [isLoadingDoctors, setIsLoadingDoctors] = useState(false);
-
-  // --- 📐 RESIZABLE LOGIC (Omitted for brevity, keep your current code) ---
+  // --- 📐 RESIZABLE SIDEBAR LOGIC ---
   const [leftWidth, setLeftWidth] = useState(400); 
   const isResizing = useRef(false);
-  // ... (Keep your startResizing, stopResizing, resize functions here)
+
+  const startResizing = useCallback(() => {
+    isResizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    isResizing.current = false;
+    document.body.style.cursor = "default";
+    document.body.style.userSelect = "auto";
+  }, []);
+
+  const resize = useCallback((e) => {
+    if (isResizing.current) {
+      const newWidth = Math.min(Math.max(e.clientX, 300), window.innerWidth - 400);
+      setLeftWidth(newWidth);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("mousemove", resize);
+    window.addEventListener("mouseup", stopResizing);
+    return () => {
+      window.removeEventListener("mousemove", resize);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [resize, stopResizing]);
 
   const navigate = useNavigate();
 
+  // --- 🔐 AUTH & DATA FETCHING ---
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role") || localStorage.getItem("user_type");
     const name = localStorage.getItem("full_name");
-    if (!token) { navigate("/"); } 
-    else {
+
+    if (!token) {
+      navigate("/"); 
+    } else {
       setUserRole(role); 
       setFullName(name);
       if (role !== "government") initialFetch(token, role);
@@ -57,154 +81,138 @@ function Dashboard() {
       });
       setAllRecords(response.data);
       if (role === 'patient') setDisplayedRecords(response.data);
-    } catch (err) { console.error("Error fetching records:", err); }
-  };
-
-  // --- 🆕 BATCH SELECTION HANDLERS ---
-  const toggleSelectAll = () => {
-    if (selectedRecordIds.length === displayedRecords.length) {
-      setSelectedRecordIds([]);
-    } else {
-      setSelectedRecordIds(displayedRecords.map(r => r.id || r._id));
+    } catch (err) {
+      console.error("Error fetching records:", err);
     }
   };
 
-  const toggleSelectOne = (id) => {
-    setSelectedRecordIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+  const handleSearch = () => {
+    if (!searchQuery.trim()) return alert("Please enter a Patient Email.");
+    setHasSearched(true);
+    const results = allRecords.filter(r => 
+      r.patient_email.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    setDisplayedRecords(results);
   };
 
-  const handleBatchTransfer = async () => {
-    if (selectedRecordIds.length === 0) return alert("Select records first!");
-    setIsBatchLoading(true);
-    setBatchResult(null);
-
+  const handleCreateRecord = async (e) => {
+    e.preventDefault();
+    const token = localStorage.getItem("token");
     try {
-      const token = localStorage.getItem("token");
-      const response = await axios.post(
-        `${API_BASE_URL}/api/transfer/execute-batch`,
-        {
-          record_ids: selectedRecordIds,
-          target_hospital_name: batchTargetHospital
-        },
+      await axios.post(`${API_BASE_URL}/api/records/create`, 
+        { patient_email: patientEmail, diagnosis, prescription, notes: "Direct Entry" },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setBatchResult(response.data);
-      setSelectedRecordIds([]); // Clear selection on completion
-    } catch (err) {
-      alert("Batch transfer failed");
-    } finally {
-      setIsBatchLoading(false);
-    }
+      alert("✅ Record created!");
+      setPatientEmail(""); setDiagnosis(""); setPrescription("");
+      initialFetch(token, userRole);
+    } catch (err) { alert("Error creating record."); }
   };
 
-  // ... (Keep handleHospitalChange, handleSearch, handleCreateRecord, handleLogout)
+  const handleLogout = () => {
+    localStorage.clear();
+    navigate("/");
+  };
 
-  if (userRole === "government") { /* ... (Keep your GovernmentView) ... */ }
+  if (userRole === "government") return <GovernmentView onLogout={handleLogout} />;
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden font-sans">
-      <header className="flex-none bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center z-20">
-          {/* ... Header Content ... */}
+      
+      {/* HEADER */}
+      <header className="flex-none bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center z-30">
+          <div className="flex items-center gap-3">
+            <div className="bg-indigo-600 text-white p-2 rounded-lg text-xl font-bold">QKD</div>
+            <div>
+                <h2 className="text-xl font-bold text-gray-800 leading-tight">Quantum Health Nexus</h2>
+                <p className="text-xs text-gray-500">{fullName} | <span className="capitalize text-indigo-600 font-semibold">{userRole}</span></p>
+            </div>
+          </div>
+          <button onClick={handleLogout} className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 text-sm font-medium transition shadow-sm">
+            Logout
+          </button>
       </header>
 
       <div className="flex-1 flex overflow-hidden w-full relative">
-        {/* LEFT PANEL */}
-        <div className="flex flex-col bg-white border-r border-gray-200 h-full shadow-sm z-10" style={{ width: leftWidth, minWidth: 300 }}>
-             {/* ... Left Panel Content (New Diagnosis / Find Doctor) ... */}
-        </div>
+        
+        {/* LEFT PANEL: CREATE RECORD */}
+        {userRole === "doctor" && (
+          <div className="flex flex-col bg-white border-r border-gray-200 h-full shadow-lg z-10" style={{ width: leftWidth, minWidth: 300 }}>
+            <div className="p-5 border-b bg-gray-50 font-bold text-gray-700">📝 New Diagnosis</div>
+            <div className="p-5 overflow-y-auto flex-1">
+              <form onSubmit={handleCreateRecord} className="space-y-4">
+                <input className="w-full p-3 border rounded-lg text-sm" placeholder="Patient Email" value={patientEmail} onChange={e => setPatientEmail(e.target.value)} required />
+                <input className="w-full p-3 border rounded-lg text-sm" placeholder="Diagnosis" value={diagnosis} onChange={e => setDiagnosis(e.target.value)} required />
+                <textarea className="w-full p-3 border rounded-lg text-sm h-32" placeholder="Prescription" value={prescription} onChange={e => setPrescription(e.target.value)} required />
+                <button className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold hover:bg-indigo-700">Submit Record</button>
+              </form>
+            </div>
+          </div>
+        )}
 
-        {/* DRAGGER */}
-        <div className="w-2 bg-gray-100 hover:bg-blue-400 cursor-col-resize z-20" onMouseDown={startResizing}></div>
+        {/* RESIZE HANDLE */}
+        {userRole === "doctor" && (
+          <div className="w-1.5 bg-gray-200 hover:bg-indigo-400 cursor-col-resize z-20 transition-all" onMouseDown={startResizing}></div>
+        )}
 
-        {/* RIGHT PANEL: HISTORY */}
+        {/* RIGHT PANEL: MANAGEMENT & HISTORY */}
         <div className="flex-1 flex flex-col bg-gray-50 h-full overflow-hidden">
-            
-            {/* Header / Search Area */}
-            <div className="flex-none p-5 border-b border-gray-200 bg-white shadow-sm z-10">
-                <div className="flex justify-between items-center mb-3">
-                    <h3 className="font-bold text-gray-800 text-lg">
-                        {userRole === "doctor" ? "🔍 Patient History" : "📂 My Medical History"}
-                    </h3>
-                    
-                    {/* 🆕 BATCH ACTION BAR (Only for Doctors) */}
-                    {userRole === "doctor" && displayedRecords.length > 0 && (
-                        <div className="flex items-center gap-3 bg-blue-50 p-2 rounded-lg border border-blue-100">
-                             <label className="flex items-center gap-2 text-xs font-bold text-blue-700">
-                                <input 
-                                    type="checkbox" 
-                                    onChange={toggleSelectAll} 
-                                    checked={selectedRecordIds.length === displayedRecords.length && displayedRecords.length > 0}
-                                />
-                                SELECT ALL
-                             </label>
-                             <select 
-                                value={batchTargetHospital} 
-                                onChange={(e) => setBatchTargetHospital(e.target.value)}
-                                className="text-xs p-1 border rounded"
-                             >
-                                <option>Hospital B</option>
-                                <option>Hospital C</option>
-                             </select>
-                             <button 
-                                onClick={handleBatchTransfer}
-                                disabled={isBatchLoading || selectedRecordIds.length === 0}
-                                className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700 disabled:bg-gray-400"
-                             >
-                                {isBatchLoading ? "Sending..." : `Transfer (${selectedRecordIds.length})`}
-                             </button>
-                        </div>
-                    )}
+          
+          <div className="flex-none p-5 border-b border-gray-200 bg-white shadow-sm z-10">
+            <h3 className="font-bold text-gray-800 text-lg mb-3">
+              {userRole === "doctor" ? "🔍 Clinical Management" : "📂 Medical History"}
+            </h3>
+            {userRole === "doctor" && (
+              <div className="flex gap-2 max-w-xl">
+                <input className="flex-1 p-2 border rounded-lg text-sm" placeholder="Search Patient History..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+                <button onClick={handleSearch} className="bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-black">Search</button>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-6 space-y-8">
+            {/* 1. MANAGEMENT AREA (Bulk & Inbox) */}
+            {userRole === "doctor" && !hasSearched && (
+              <div className="space-y-6">
+                <BulkPatientList />
+                <Inbox />
+              </div>
+            )}
+
+            {/* 2. SEARCH RESULTS / HISTORY AREA */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="h-px bg-gray-300 flex-1"></div>
+                <span className="text-[10px] font-bold uppercase tracking-widest">
+                  {hasSearched ? "Search Results" : "Recent Patient Updates"}
+                </span>
+                <div className="h-px bg-gray-300 flex-1"></div>
+              </div>
+
+              {displayedRecords.length === 0 && hasSearched && (
+                <div className="text-center py-10 text-gray-400 italic">No records found for this patient.</div>
+              )}
+
+              {displayedRecords.map((rec) => (
+                <div key={rec._id || rec.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 transition-all group">
+                  <div className="flex justify-between items-start mb-3">
+                    <h4 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{rec.diagnosis}</h4>
+                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded uppercase border border-indigo-100">{rec.hospital}</span>
+                  </div>
+                  <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 border-l-4 border-indigo-400 mb-4">{rec.prescription}</div>
+                  <div className="flex justify-between text-[11px] text-gray-400 font-bold uppercase">
+                    <span>{rec.patient_email}</span>
+                    <span>{new Date(rec.created_at).toLocaleDateString()}</span>
+                  </div>
+                  {userRole === "doctor" && (
+                    <div className="mt-4 pt-4 border-t border-dashed">
+                      <TransferControl recordId={rec._id || rec.id} />
+                    </div>
+                  )}
                 </div>
-
-                {/* 🆕 BATCH RESULT MESSAGES */}
-                {batchResult && (
-                    <div className="mb-4 text-xs">
-                        {batchResult.success.length > 0 && (
-                            <div className="p-2 bg-green-100 text-green-700 rounded mb-1">
-                                ✅ {batchResult.success.length} records transferred successfully.
-                            </div>
-                        )}
-                        {batchResult.skipped.length > 0 && (
-                            <div className="p-2 bg-yellow-100 text-yellow-700 rounded">
-                                ⚠️ {batchResult.skipped.length} skipped (Duplicate info already exists at destination).
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Search Bar Code... */}
+              ))}
             </div>
-
-            {/* Scrollable Records List */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                {displayedRecords.map((rec) => (
-                    <div key={rec.id || rec._id} className={`bg-white p-5 rounded-xl border transition-all ${selectedRecordIds.includes(rec.id || rec._id) ? 'border-blue-500 ring-2 ring-blue-100' : 'border-gray-200'}`}>
-                        <div className="flex justify-between items-start mb-3">
-                            <div className="flex items-center gap-3">
-                                {/* 🆕 CHECKBOX PER RECORD */}
-                                {userRole === "doctor" && (
-                                    <input 
-                                        type="checkbox" 
-                                        className="w-4 h-4" 
-                                        checked={selectedRecordIds.includes(rec.id || rec._id)}
-                                        onChange={() => toggleSelectOne(rec.id || rec._id)}
-                                    />
-                                )}
-                                <h4 className="font-bold text-lg text-gray-900">{rec.diagnosis}</h4>
-                            </div>
-                            <span className="text-[10px] font-bold bg-gray-100 px-2 py-1 rounded uppercase">{rec.hospital || "Secured"}</span>
-                        </div>
-                        
-                        <div className="bg-blue-50/50 p-4 rounded-lg text-sm mb-4 border-l-4 border-blue-400">
-                            {rec.prescription}
-                        </div>
-
-                        {/* ... Date and Email footer ... */}
-                    </div>
-                ))}
-            </div>
+          </div>
         </div>
       </div>
     </div>
