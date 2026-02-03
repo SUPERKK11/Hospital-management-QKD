@@ -279,38 +279,6 @@ function Dashboard() {
 
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
-            
-                {/* ============================================================ */}
-                {/* START PASTE: BULK & INBOX SECTION (Only for Doctors)        */}
-                {/* ============================================================ */}
-                {userRole === "doctor" && (
-                    <div className="space-y-8 mb-10">
-                        <div className="bg-white p-6 rounded-xl border border-blue-200 shadow-sm">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                🚀 Bulk Transfer Management
-                            </h3>
-                            <BulkPatientList />
-                        </div>
-
-                        <hr className="border-gray-300" />
-
-                        <div className="bg-white p-6 rounded-xl border border-green-200 shadow-sm">
-                            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                📥 Received Records (Inbox)
-                            </h3>
-                            <Inbox />
-                        </div>
-                        
-                        <div className="flex items-center gap-2 text-gray-400 py-4">
-                            <div className="h-px bg-gray-300 flex-1"></div>
-                            <span className="text-xs font-bold uppercase tracking-widest">End of Management Section</span>
-                            <div className="h-px bg-gray-300 flex-1"></div>
-                        </div>
-                    </div>
-                )}
-                {/* ============================================================ */}
-                {/* END PASTE                                                   */}
-                {/* ============================================================ */}
                 
                 {/* Doctor Initial State */}
                 {userRole === "doctor" && !hasSearched && (
