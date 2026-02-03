@@ -47,9 +47,10 @@ const Inbox = () => {
       // 2. Remove from UI immediately (Optimistic UI update)
       setIncomingRecords(prev => prev.filter(r => (r._id || r.id) !== id));
       
-      // 3. Optional: Trigger a browser refresh or event to update the main list
-      // For now, a simple alert helps the user know it worked
+      // 3. Success Message
       alert("✅ Patient Record Accepted! It is now in your main history.");
+      
+      // 4. Force refresh to update the main dashboard list
       window.location.reload(); 
 
     } catch (err) {
@@ -107,7 +108,7 @@ const Inbox = () => {
                     <h4 className="font-bold text-gray-800 text-sm">{rec.diagnosis || "Encrypted Record"}</h4>
                   </div>
                   
-                  {/* ACCEPT BUTTON */}
+                  {/* 👇 THIS IS THE BUTTON YOU WERE MISSING 👇 */}
                   <button 
                     onClick={() => handleAccept(recId)}
                     disabled={processingId === recId}
@@ -123,6 +124,7 @@ const Inbox = () => {
                       </>
                     )}
                   </button>
+                  {/* 👆 --------------------------------- 👆 */}
                 </div>
 
                 <div className="bg-gray-50 p-2.5 rounded border border-gray-100 mb-2">
