@@ -10,6 +10,7 @@ const TransferControl = ({ recordId }) => {
   const [target, setTarget] = useState(""); 
   const [error, setError] = useState("");
 
+  // Load Hospitals
   useEffect(() => {
     const fetchHospitals = async () => {
       try {
@@ -20,7 +21,7 @@ const TransferControl = ({ recordId }) => {
         setHospitals(res.data || []);
         if (res.data?.length > 0) setTarget(res.data[0]);
       } catch (err) {
-        console.error("Failed to load hospitals", err);
+        console.error("Hospital load error", err);
       }
     };
     fetchHospitals();
@@ -33,7 +34,7 @@ const TransferControl = ({ recordId }) => {
 
     try {
       const token = localStorage.getItem('token');
-      // Matches the BatchTransferRequest model in transfer.py
+      // Payload matches the BatchTransferRequest model in transfer.py
       const payload = { 
           record_ids: [recordId], 
           target_hospital_name: target 
@@ -45,10 +46,11 @@ const TransferControl = ({ recordId }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
+      // The response is the 'summary' dict: {success: [], skipped: [], failed: []}
       setResult(response.data);
     } catch (err) {
-      const msg = err.response?.data?.detail;
-      setError(Array.isArray(msg) ? msg[0]?.msg : "Transfer Error");
+      console.error("Transfer Error:", err);
+      setError("Transfer Failed. Check console.");
     } finally {
       setLoading(false);
     }
@@ -56,55 +58,39 @@ const TransferControl = ({ recordId }) => {
 
   return (
     <div className="mt-4 p-4 border border-indigo-200 rounded-lg bg-indigo-50">
-      <h4 className="font-bold text-indigo-900 mb-2 flex items-center gap-2">
-        ⚛️ Quantum Secure Transfer
-      </h4>
+      <h4 className="font-bold text-indigo-900 mb-2">⚛️ Quantum Secure Transfer</h4>
       
       {!result ? (
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex gap-2">
           <select 
             value={target} 
             onChange={(e) => setTarget(e.target.value)}
-            className="p-2 border rounded text-sm bg-white min-w-[150px]"
+            className="p-2 border rounded text-sm bg-white"
           >
-            {hospitals.map((hosp, index) => (
-              <option key={index} value={hosp}>To: {hosp}</option>
-            ))}
+            {hospitals.map((h, i) => <option key={i} value={h}>{h}</option>)}
           </select>
           
           <button 
             onClick={handleTransfer} 
             disabled={loading || !target}
-            className="px-4 py-2 rounded text-white text-sm font-semibold bg-indigo-600 disabled:bg-gray-400"
+            className="px-4 py-2 rounded text-white bg-indigo-600 disabled:bg-gray-400"
           >
-            {loading ? "Establishing QKD..." : "🚀 Initiate Transfer"}
+            {loading ? "Establishing QKD..." : "Send Record"}
           </button>
-          {error && <span className="text-red-500 text-[10px] block w-full mt-1 font-bold">{error}</span>}
         </div>
       ) : (
-        <div className="space-y-3">
-          {/* UPDATED UI: Matches transfer.py response keys: success, skipped, failed */}
-          {result.success?.length > 0 && (
-            <div className="p-2 bg-green-100 text-green-800 rounded text-sm border border-green-200">
-              ✅ <strong>Success!</strong> Record transferred to {target}.
-            </div>
+        <div className="space-y-2 text-sm">
+          {/* We check success/skipped/failed arrays from the backend response */}
+          {result?.success?.includes(recordId) && (
+            <div className="text-green-700 font-bold">✅ Successfully Transferred!</div>
           )}
-          
-          {result.skipped?.length > 0 && (
-            <div className="p-2 bg-amber-100 text-amber-800 rounded text-sm border border-amber-200">
-              ⚠️ <strong>Skipped:</strong> This version already exists in target inbox.
-            </div>
+          {result?.skipped?.includes(recordId) && (
+            <div className="text-amber-700 font-bold">⚠️ Already exists in target inbox.</div>
           )}
-
-          {result.failed?.length > 0 && (
-            <div className="p-2 bg-red-100 text-red-800 rounded text-sm border border-red-200">
-              ❌ <strong>Failed:</strong> {result.failed[0]?.reason || "Unknown error"}
-            </div>
+          {result?.failed?.some(f => f.id === recordId) && (
+            <div className="text-red-700 font-bold">❌ Transfer Failed.</div>
           )}
-          
-          <button onClick={() => setResult(null)} className="text-[10px] text-indigo-600 underline">
-            Start New Transfer
-          </button>
+          <button onClick={() => setResult(null)} className="text-xs text-indigo-600 underline">Back</button>
         </div>
       )}
     </div>
