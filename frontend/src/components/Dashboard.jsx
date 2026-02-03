@@ -7,6 +7,21 @@ import GovernmentView from '../components/GovernmentView';
 import BulkPatientList from './components/BulkPatientList';
 import Inbox from './components/Inbox';
 
+const Dashboard = () => {
+  return (
+    <div className="container mx-auto p-6 space-y-8">
+       {/* 1. Bulk Transfer Section (Send Data) */}
+       <BulkPatientList />
+
+       {/* 2. Divider */}
+       <hr className="border-gray-300" />
+
+       {/* 3. Inbox Section (Receive Data) */}
+       <Inbox />
+    </div>
+  )
+}
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
 function Dashboard() {
@@ -275,7 +290,6 @@ function Dashboard() {
                     </div>
                 )}
             </div>
-
 
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
