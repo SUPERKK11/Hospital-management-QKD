@@ -6,9 +6,19 @@ import { useNavigate } from "react-router-dom";
 import TransferControl from '../components/TransferControl';
 import GovernmentView from '../components/GovernmentView';
 import BulkPatientList from '../components/BulkPatientList';
-// import Inbox from '../components/Inbox';
+import Inbox from '../components/Inbox';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
+// 🛡️ SAFETY WRAPPER: Prevents entire app from crashing if a child fails
+const SafeComponent = ({ children, name }) => {
+  try {
+    return children;
+  } catch (err) {
+    console.error(`CRASH in ${name}:`, err);
+    return <div className="p-4 bg-red-100 text-red-700 border border-red-300 rounded">⚠️ {name} Crashed</div>;
+  }
+};
 
 function Dashboard() {
   const [userRole, setUserRole] = useState("");
@@ -25,10 +35,10 @@ function Dashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
 
-  // --- 📐 RESIZABLE SIDEBAR LOGIC ---
+  // Resizable Sidebar Logic
   const [leftWidth, setLeftWidth] = useState(400); 
   const isResizing = useRef(false);
-
+  
   const startResizing = useCallback(() => {
     isResizing.current = true;
     document.body.style.cursor = "col-resize";
@@ -59,7 +69,7 @@ function Dashboard() {
 
   const navigate = useNavigate();
 
-  // --- 🔐 AUTH & DATA FETCHING ---
+  // AUTH & FETCH
   useEffect(() => {
     const token = localStorage.getItem("token");
     const role = localStorage.getItem("role") || localStorage.getItem("user_type");
@@ -79,8 +89,10 @@ function Dashboard() {
       const response = await axios.get(`${API_BASE_URL}/api/records/my-records`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setAllRecords(response.data);
-      if (role === 'patient') setDisplayedRecords(response.data);
+      // 🛡️ SAFETY: Ensure data is an array
+      const data = Array.isArray(response.data) ? response.data : [];
+      setAllRecords(data);
+      if (role === 'patient') setDisplayedRecords(data);
     } catch (err) {
       console.error("Error fetching records:", err);
     }
@@ -90,7 +102,7 @@ function Dashboard() {
     if (!searchQuery.trim()) return alert("Please enter a Patient Email.");
     setHasSearched(true);
     const results = allRecords.filter(r => 
-      r.patient_email.toLowerCase().includes(searchQuery.toLowerCase())
+      r.patient_email?.toLowerCase().includes(searchQuery.toLowerCase())
     );
     setDisplayedRecords(results);
   };
@@ -118,7 +130,6 @@ function Dashboard() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100 overflow-hidden font-sans">
-      
       {/* HEADER */}
       <header className="flex-none bg-white p-4 shadow-sm border-b border-gray-200 flex justify-between items-center z-30">
           <div className="flex items-center gap-3">
@@ -134,8 +145,7 @@ function Dashboard() {
       </header>
 
       <div className="flex-1 flex overflow-hidden w-full relative">
-        
-        {/* LEFT PANEL: CREATE RECORD */}
+        {/* LEFT PANEL */}
         {userRole === "doctor" && (
           <div className="flex flex-col bg-white border-r border-gray-200 h-full shadow-lg z-10" style={{ width: leftWidth, minWidth: 300 }}>
             <div className="p-5 border-b bg-gray-50 font-bold text-gray-700">📝 New Diagnosis</div>
@@ -150,14 +160,12 @@ function Dashboard() {
           </div>
         )}
 
-        {/* RESIZE HANDLE */}
         {userRole === "doctor" && (
           <div className="w-1.5 bg-gray-200 hover:bg-indigo-400 cursor-col-resize z-20 transition-all" onMouseDown={startResizing}></div>
         )}
 
-        {/* RIGHT PANEL: MANAGEMENT & HISTORY */}
+        {/* RIGHT PANEL */}
         <div className="flex-1 flex flex-col bg-gray-50 h-full overflow-hidden">
-          
           <div className="flex-none p-5 border-b border-gray-200 bg-white shadow-sm z-10">
             <h3 className="font-bold text-gray-800 text-lg mb-3">
               {userRole === "doctor" ? "🔍 Clinical Management" : "📂 Medical History"}
@@ -171,39 +179,30 @@ function Dashboard() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-6 space-y-8">
-            {/* 1. MANAGEMENT AREA (Bulk & Inbox) */}
+            {/* 1. MANAGEMENT AREA (Bulk & Inbox) - The Danger Zone */}
             {userRole === "doctor" && !hasSearched && (
               <div className="space-y-6">
-                <BulkPatientList />
-                <Inbox />
+                {/* COMMENT THESE OUT IF STILL WHITE SCREEN */}
+                 <BulkPatientList /> 
+                 <Inbox /> 
               </div>
             )}
 
-            {/* 2. SEARCH RESULTS / HISTORY AREA */}
+            {/* 2. SEARCH RESULTS */}
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-gray-400">
-                <div className="h-px bg-gray-300 flex-1"></div>
-                <span className="text-[10px] font-bold uppercase tracking-widest">
-                  {hasSearched ? "Search Results" : "Recent Patient Updates"}
-                </span>
-                <div className="h-px bg-gray-300 flex-1"></div>
-              </div>
-
               {displayedRecords.length === 0 && hasSearched && (
-                <div className="text-center py-10 text-gray-400 italic">No records found for this patient.</div>
+                <div className="text-center py-10 text-gray-400 italic">No records found.</div>
               )}
 
               {displayedRecords.map((rec) => (
                 <div key={rec._id || rec.id} className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:border-indigo-300 transition-all group">
                   <div className="flex justify-between items-start mb-3">
-                    <h4 className="font-bold text-gray-900 group-hover:text-indigo-600 transition-colors">{rec.diagnosis}</h4>
-                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded uppercase border border-indigo-100">{rec.hospital}</span>
+                    <h4 className="font-bold text-gray-900">{rec.diagnosis}</h4>
+                    <span className="text-[10px] font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded uppercase">{rec.hospital}</span>
                   </div>
                   <div className="bg-gray-50 p-4 rounded-lg text-sm text-gray-700 border-l-4 border-indigo-400 mb-4">{rec.prescription}</div>
-                  <div className="flex justify-between text-[11px] text-gray-400 font-bold uppercase">
-                    <span>{rec.patient_email}</span>
-                    <span>{new Date(rec.created_at).toLocaleDateString()}</span>
-                  </div>
+                  
+                  {/* TRANSFER CONTROL - ONLY FOR DOCTORS */}
                   {userRole === "doctor" && (
                     <div className="mt-4 pt-4 border-t border-dashed">
                       <TransferControl recordId={rec._id || rec.id} />

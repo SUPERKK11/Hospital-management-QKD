@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Dict, Any
 from bson import ObjectId
 from datetime import datetime
 import logging
@@ -122,7 +122,47 @@ async def execute_batch_transfer(
     return summary
 
 # ==========================================
-# INBOX ENDPOINT 
+# 🆕 MY INBOX ENDPOINT (FIXES DASHBOARD)
+# ==========================================
+@router.get("/my-inbox")
+async def get_my_hospital_inbox(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Fetches records sitting in the logged-in doctor's hospital inbox.
+    """
+    # 1. Identify the Hospital from the User Token
+    my_hospital = current_user.get("hospital")
+    if not my_hospital:
+        # If user has no hospital (e.g. government/patient), return empty
+        return []
+
+    # 2. Determine Collection Name (e.g., "inbox_hospital_b")
+    safe_name = my_hospital.lower().strip().replace(" ", "_")
+    collection_name = f"inbox_{safe_name}"
+
+    # 3. Fetch Records (Sort by newest first)
+    inbox_records = await db[collection_name].find().sort("received_at", -1).limit(50).to_list(50)
+
+    # 4. Format for Frontend
+    formatted_records = []
+    for rec in inbox_records:
+        rec["id"] = str(rec["_id"])
+        del rec["_id"]
+        
+        # UI Helpers: Ensure we have a displayable sender name
+        rec["sender"] = rec.get("received_from", "Unknown")
+        # Provide a snippet for preview
+        rec["diagnosis"] = "🔒 Encrypted Content" 
+        rec["prescription"] = str(rec.get("encrypted_diagnosis", ""))[:40] + "..."
+            
+        formatted_records.append(rec)
+
+    return formatted_records
+
+# ==========================================
+# PUBLIC INBOX ENDPOINT (For Debug/Admin)
 # ==========================================
 @router.get("/inbox/{hospital_name}")
 async def view_hospital_inbox(
